@@ -69,9 +69,9 @@ describe('记忆目录快照（15A）', () => {
     expect(writeAuthorMemory(ws, { 名称: '短句节奏', 描述: '作者偏好短句收束', 类: '文风', 标签: ['星辰'], 来源: '对谈', 正文: '秘密正文不可外泄' }).ok).toBe(true)
     const c = readAuthorMemoryCatalog(ws)
     expect(c.状态).toBe('正常')
-    expect(c.条目).toEqual([{ 名称: '短句节奏', 描述: '作者偏好短句收束', 类: '文风', 来源: '对谈', 全文位置: '书房/作者记忆/短句节奏.md' }])
+    expect(c.条目).toEqual([{ 名称: '短句节奏', 描述: '作者偏好短句收束', 类: '文风', 来源: '对谈', 标签: ['星辰'], 全文位置: '书房/作者记忆/短句节奏.md' }])
     const text = renderMemoryCatalog(c, '会话开始时')
-    expect(text).toContain('- 短句节奏 — 作者偏好短句收束｜类：文风｜来源：对谈｜文件：书房/作者记忆/短句节奏.md')
+    expect(text).toContain('- 短句节奏 — 作者偏好短句收束｜类：文风｜来源：对谈｜标签：星辰｜文件：书房/作者记忆/短句节奏.md')
     expect(text).not.toContain('秘密正文')
   })
 

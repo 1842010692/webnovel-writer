@@ -14,10 +14,13 @@ function makeWorkspace(): string {
   return dir
 }
 
+const writingPresets = { serviceFor: () => ({ mode: 'writing' as const }) }
+
 interface FakeAgentCtx {
   systemPrompt: { context: (c: unknown) => () => void; section: (s: unknown) => () => void }
   inject: (deps: unknown, cb: (scope: unknown) => void) => { dispose: () => Promise<void> }
   on: (e: string) => void
+  get: (name: string) => unknown
 }
 
 /**
@@ -45,6 +48,7 @@ function makeAgentCtx(sink: unknown[], released: string[] = [], injected: string
       return { dispose: async () => { released.push('fiber') } }
     },
     on: () => {},
+    get: (name) => (name === 'agentPresets' ? writingPresets : undefined),
   }
   return self
 }
@@ -99,20 +103,13 @@ function makeHost(opts: {
 describe('B6 依赖反应性(inject 持续契约,非 apply 时刻快照)', () => {
   beforeEach(() => { resetWorkspaceRoot() })
 
-  it('缺失技能挂载能力明确告警，等待 skills 服务时不误报', () => {
+  it('随包技能改由写作预设挂载，宿主不再因缺 skills 告警', () => {
     const missing = makeHost({ ready: {} })
     const warn = vi.fn()
     missing.host.logger = { info: () => {}, warn }
     apply(missing.host as never)
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('随包技能未挂载'))
-
-    const waiting = makeHost({ ready: {} })
-    waiting.host.plugin = vi.fn()
-    waiting.host.logger = { info: () => {}, warn: vi.fn() }
-    apply(waiting.host as never)
-    expect(waiting.injected.some(item => item.deps.includes('skills'))).toBe(true)
-    expect(waiting.host.plugin).not.toHaveBeenCalled()
-    expect((waiting.host.logger as { warn: unknown }).warn).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+    expect(missing.injected.some(item => item.deps.includes('skills'))).toBe(false)
   })
 
   it('workspaceRegistry 在 apply 时刻尚未就绪:仍经 inject 声明,后到即认到工作范围', () => {
@@ -140,7 +137,7 @@ describe('B6 依赖反应性(inject 持续契约,非 apply 时刻快照)', () =>
     // dsh 运行时对齐批：注册落点＝agent 的 scope 层。桩 agent 的 ctx 暴露
     // tools 记录器，反应式回调（tools/userQuestions 就绪）触发时经 agentCtx.get 可达。
     const recorder = { register: (t: { name: string }) => { registered.push(t.name); return () => {} } }
-    const agentCtx = { get: (n: string) => (n === 'tools' ? recorder : undefined) }
+    const agentCtx = { get: (n: string) => (n === 'tools' ? recorder : n === 'agentPresets' ? writingPresets : undefined) }
     const { host, injected } = makeHost({ ready: { agents: { list: () => [{ id: 'sess-9', ctx: agentCtx }] } } })
 
     apply(host as never)
@@ -362,6 +359,7 @@ describe('B2 per-agent 注册随卸载交回(persona / status / 门禁)', () => 
     }
     self.inject = (_d: unknown, cb: (s: unknown) => void) => { cb(self); return { dispose: () => Promise.resolve() } }
     self.on = () => () => { sectionDisposed.push('on') }
+    self.get = (name: string) => (name === 'agentPresets' ? writingPresets : undefined)
 
     const { host, effects } = makeHost({
       ready: {

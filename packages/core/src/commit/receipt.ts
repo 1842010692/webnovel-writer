@@ -74,10 +74,10 @@ export function contentHash(content: string | Buffer): string {
 /** Reject links on every component, including the protected receipt directory. */
 export function archiveFile(root: string, relative: string): string {
   if (path.isAbsolute(relative) || relative.split(/[\\/]/).includes('..') || /[:\0]/.test(relative)) {
-    throw new Error(`归档路径非法:${relative}`)
+    throw new Error(`归档路径非法：${relative}`)
   }
   const target = path.resolve(root, relative)
-  if (!isInsidePath(root, target)) throw new Error(`归档路径越出书仓:${relative}`)
+  if (!isInsidePath(root, target)) throw new Error(`归档路径越出书仓：${relative}`)
   let current = root
   const parts = relative.split(/[\\/]/)
   for (let i = 0; i < parts.length; i += 1) {
@@ -85,7 +85,7 @@ export function archiveFile(root: string, relative: string): string {
     try {
       const stat = fs.lstatSync(current)
       if (stat.isSymbolicLink() || (i < parts.length - 1 ? !stat.isDirectory() : !stat.isFile())) {
-        throw new Error(`归档路径必须是普通文件且不得经过链接:${relative}`)
+        throw new Error(`归档路径必须是普通文件且不得经过链接：${relative}`)
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
@@ -143,7 +143,7 @@ export function readArchiveReceipt(root: string, scope: string): ArchiveReceipt 
     }
     return receipt
   } catch (error) {
-    throw new Error(`归档收据损坏，已保留，请核对后处理:${String(error)}`)
+    throw new Error(`归档收据损坏，已保留：${error instanceof Error ? error.message : String(error)}。请把情况呈报作者，并核对 草稿区/.archive-receipts/ 中的收据`)
   }
 }
 
@@ -157,9 +157,9 @@ export function listArchiveReceipts(root: string): ArchiveReceipt[] {
     throw error
   }
   return names.map(name => {
-    if (!/^[a-f0-9]{64}\.json$/.test(name)) throw new Error(`归档收据损坏，保留未知文件:${name}`)
+    if (!/^[a-f0-9]{64}\.json$/.test(name)) throw new Error(`归档收据损坏，保留未知文件：${name}`)
     const receipt = readArchiveReceipt(root, name.slice(0, -5))
-    if (!receipt) throw new Error(`归档收据已消失，请核对后处理:${name}`)
+    if (!receipt) throw new Error(`归档收据已消失：${name}。请把情况呈报作者，不要重复调用`)
     return receipt
   })
 }
@@ -169,7 +169,7 @@ export function verifyArchiveOutputs(root: string, receipt: ArchiveReceipt): voi
     const file = archiveFile(root, output.relPath)
     let current: string | undefined
     try { current = contentHash(fs.readFileSync(file)) } catch { /* Missing also conflicts. */ }
-    if (current !== output.sha256) throw new Error(`归档收据目标冲突，保留作者修改:${output.relPath}`)
+    if (current !== output.sha256) throw new Error(`归档收据目标冲突，保留作者修改：${output.relPath}`)
   }
 }
 
@@ -177,15 +177,15 @@ export function verifyArchiveOutputs(root: string, receipt: ArchiveReceipt): voi
 export function archiveReceiptCommitted(root: string, receipt: ArchiveReceipt): boolean {
   const head = runGit(root, ['rev-parse', '--verify', 'HEAD'])
   if (head.status !== 0) {
-    if (receipt.baseHead !== null) throw new Error('归档收据的提交历史已改变，请核对后处理')
+    if (receipt.baseHead !== null) throw new Error('归档收据的提交历史已改变（可能有人改写了 Git 历史）。请把情况呈报作者，不要重复调用')
     return false
   }
   if (receipt.baseHead !== null) {
     const ancestor = runGit(root, ['merge-base', '--is-ancestor', receipt.baseHead, 'HEAD'])
-    if (ancestor.status !== 0) throw new Error('归档收据的提交历史已改变，请核对后处理')
+    if (ancestor.status !== 0) throw new Error('归档收据的提交历史已改变（可能有人改写了 Git 历史）。请把情况呈报作者，不要重复调用')
   }
   const history = runGit(root, ['log', '--format=%H', receipt.baseHead === null ? 'HEAD' : `${receipt.baseHead}..HEAD`])
-  if (history.status !== 0) throw new Error(`无法核对归档提交:${history.stderr}`)
+  if (history.status !== 0) throw new Error(`无法核对归档提交：${history.stderr}`)
   for (const commit of history.stdout.trim().split('\n').filter(Boolean)) {
     const matches = receipt.outputs.every(output => {
       const blob = runGit(root, ['rev-parse', '--verify', `${commit}:${output.relPath}`])
@@ -210,7 +210,7 @@ export function makeArchiveReceipt(
     const blob = spawnSync('git', ['hash-object', `--path=${relPath}`, '--stdin'], {
       cwd: root, input: content, encoding: 'utf8', windowsHide: true,
     })
-    if (blob.status !== 0 || !OBJECT.test(blob.stdout.trim())) throw new Error(`无法计算归档提交指纹:${relPath}`)
+    if (blob.status !== 0 || !OBJECT.test(blob.stdout.trim())) throw new Error(`无法计算归档提交指纹：${relPath}`)
     return { relPath, sha256: contentHash(content), gitBlob: blob.stdout.trim() }
   })
   return { schema: 1, ...identity, baseHead: head.status === 0 ? head.stdout.trim() : null, outputs }

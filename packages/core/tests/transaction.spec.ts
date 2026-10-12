@@ -3,7 +3,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import { createHash } from 'node:crypto'
-import { recoverTransactions, runTransaction, withBookLock, writeBatchAtomic } from '../src'
+import { listQuarantined, recoverTransactions, runTransaction, withBookLock, writeBatchAtomic } from '../src'
 
 const roots: string[] = []
 function mkRoot(): string {
@@ -94,7 +94,11 @@ describe('多文件事务恢复', () => {
     }), 'utf-8')
     expect(() => recoverTransactions(root)).toThrow(/恢复冲突/)
     expect(fs.readFileSync(path.join(root, '正文', '章.md'), 'utf-8')).toBe('作者后来修改\n')
-    expect(fs.existsSync(tx)).toBe(true)
+    expect(fs.existsSync(tx)).toBe(false)
+    const quarantined = listQuarantined(root)
+    expect(quarantined).toHaveLength(1)
+    expect(quarantined[0]!.targets).toEqual(['正文/章.md'])
+    expect(fs.readFileSync(path.join(root, quarantined[0]!.location, 'transaction/backups', '0.bak'), 'utf-8')).toBe('旧\n')
   })
 
   it('正常批次完成后不残留事务目录', () => {
@@ -130,7 +134,7 @@ describe('多文件事务恢复', () => {
     fs.mkdirSync(path.join(root, '占位目录'), { recursive: true })
     expect(() => writeBatchAtomic(root, [{ relPath: '占位目录', content: '不能覆盖目录' }], {
       provenance: { operationId: 'op-test-failed', toolName: 'test' },
-    })).toThrow(/B1/)
+    })).toThrow(/原子写失败/)
     const audit = JSON.parse(fs.readFileSync(path.join(root, '.webnovel', 'operations', 'op-test-failed.json'), 'utf-8')) as Record<string, unknown>
     expect(audit.status).toBe('failed')
     expect(String(audit.error)).toMatch(/事务|EPERM|目录/)

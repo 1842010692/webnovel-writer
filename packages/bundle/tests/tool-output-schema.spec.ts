@@ -45,7 +45,7 @@ describe('工具 output.schema 与真实返回形状一致(dsh 校验器)', () =
       ['novel_settle_chapter', { bookId, 卷: 1, 章: 1, 章名: '探章', summary: 'x', 裁决记录: ' ' }],
       ['novel_assemble_materials', { bookId, 卷: 1, 章: 1, 章名: '探章' }],
       ['novel_note_pending', { bookId, 名称: '探留白', 说明: 'x' }],
-      ['novel_record_memory', { bookId, 名称: '探记', 描述: 'x', 类: '决策', 标签: ['x'], 来源: '对谈', 正文: 'x' }],
+      ['novel_record_memory', { scope: 'book', 操作: '新增', bookId, 名称: '探记', 描述: 'x', 类: '决策', 标签: ['x'], 来源: '对谈', 正文: 'x' }],
       ['novel_record_review_findings', { bookId, 卷: 1, 章: 1, 章名: '探章', 模块名: '不存在', 发现项: [] }],
       ['novel_new_outline_draft', { bookId, 卷: 1, 章: 1, 章名: '探章', 正文: 'x', 来源引用: ['x@1'] }],
       ['novel_confirm_outline', { bookId, 卷: 1, 章: 1, 章名: '探章' }],

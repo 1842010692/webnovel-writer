@@ -12,7 +12,7 @@ export const workflowStages = [
   { id: 'polish', label: '润色', group: 'chapter', note: '打磨文字，保留原意。' },
   { id: 'review', label: '审读', group: 'chapter', note: '检查本章，记录需要处理的问题。' },
   { id: 'revise', label: '改稿', group: 'chapter', note: '按已确认的意见修改，必要时重新审读。' },
-  { id: 'settle', label: '沉淀', group: 'chapter', note: '整理摘要、线索与世界书，准备定稿包。' },
+  { id: 'settle', label: '沉淀', group: 'chapter', note: '整理摘要、线索与世界书，准备待定稿包。' },
   { id: 'confirm', label: '定稿', group: 'chapter', note: '等待作者裁决，批准后入档。本章完成后不自动开下一章。' },
 ] as const
 export type WorkflowStage = typeof workflowStages[number]['id']

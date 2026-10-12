@@ -1,12 +1,13 @@
 {
   "name": "@linfengqaqtat/dsh-scriptor",
-  "version": "8.2.0",
+  "version": "8.2.1",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./preset": "./lib/preset.js"
   },
   "dsh": {
     "client": {
@@ -21,7 +22,10 @@
       ]
     },
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/writing.patch.yml"
+      ]
     }
   },
   "scripts": {
@@ -46,6 +50,8 @@
     "@deepseek-ai/cordis-plugin-loader": "1.0.5",
     "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-agent-loop": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent-preset": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.0-rc.2",
     "@deepseek-ai/dsh-api-workspace-files": "0.2.0-rc.2",
     "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2",
     "@deepseek-ai/dsh-atomic-write": "0.2.0-rc.2",
@@ -115,13 +121,15 @@
   },
   "files": [
     "lib/index.js",
+    "lib/preset.js",
     "lib/client.js",
     "skills/**/*",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
-    "licenses/*.txt"
+    "licenses/*.txt",
+    "presets/*.yml"
   ],
   "description": "Webnovel Writer：DSH 长篇网文写作工作台",
   "license": "GPL-3.0-only",

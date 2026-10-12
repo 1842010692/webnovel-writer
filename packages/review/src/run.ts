@@ -103,8 +103,9 @@ function dispositionMap(record: ReviewRecord): Map<string, ReviewDisposition> {
   const result = new Map<string, ReviewDisposition>()
   for (const item of [...(record.待继承处置 ?? []), ...record.问题]) {
     if (item.处置状态 === '待处理') continue
-    const { 模块名, 证据位置, 问题说明, 处置状态, 处置说明 } = item
+    const { 模块名, 证据位置, 问题说明, 处置状态, 处置说明, 转交提案 } = item
     result.set(findingIdentity(item), { 模块名, 证据位置, 问题说明, 处置状态,
+      ...(转交提案 === undefined ? {} : { 转交提案 }),
       ...(处置说明 === undefined ? {} : { 处置说明 }) })
   }
   return result
@@ -113,6 +114,7 @@ function dispositionMap(record: ReviewRecord): Map<string, ReviewDisposition> {
 function inheritDisposition(finding: Finding, previous: Map<string, ReviewDisposition>): Finding {
   const old = previous.get(findingIdentity(finding))
   return old === undefined ? finding : { ...finding, 处置: old.处置状态, 处置状态: old.处置状态,
+    ...(old.转交提案 === undefined ? {} : { 转交提案: old.转交提案 }),
     ...(old.处置说明 === undefined ? {} : { 处置说明: old.处置说明 }) }
 }
 
@@ -306,6 +308,12 @@ function ingestFindingsLocked(
   const findings: Finding[] = []
   let n = 1
   for (const raw of rawFindings) {
+    if (raw !== null && typeof raw === 'object') {
+      const value = raw as Record<string, unknown>
+      if (value['处置状态'] === '已转提案' || value['处置'] === '已转提案' || value['转交提案'] !== undefined) {
+        return { ok: false, reason: '发现项回写不接受转交处置。请用 novel_apply_revision 或 novel_apply_revision_batch 校验已通过的关联提案', record: null }
+      }
+    }
     const f = normalizeFinding(raw)
     if (f === null) continue
     const withModule: Finding = { ...f, 模块名, 审核编号: reviewId(key) }

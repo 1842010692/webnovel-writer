@@ -6,6 +6,8 @@ import { parseDocument, serializeDocument } from '../repo/frontmatter'
 import { applyVersionFields, bumpVersion, extractVersionFields, initialVersion } from '../provenance'
 import { assertSegment, LEDGER_KINDS, MEMORY_KINDS, paths } from '../repo/paths'
 import { bookMemoryOps, type BookMemoryInput } from '../memory/book'
+import { memoryTextHash, normalizeMemoryText, readMemoryText } from '../memory/write'
+import { MACHINE_SCHEMA_VERSION, parseMachineJson } from '../repo/schema'
 
 export const ledgerKinds = LEDGER_KINDS
 export const memoryKinds = MEMORY_KINDS
@@ -78,13 +80,41 @@ function bodyIsEmpty(text: string): boolean {
   })
 }
 
+/**
+ * 候选解析错误。文案格式固定为「段名第 N 行：问题；合法值：…；修正方法：…」，
+ * 让调用方一次就能定位并改对；工具层按「第 N 行：」归为 parse-error。
+ */
+export class SettlementParseError extends Error {
+  constructor(
+    readonly section: string,
+    readonly line: number | null,
+    problem: string,
+    fix: string,
+    legal?: readonly string[],
+  ) {
+    const where = line === null ? section : `${section}第 ${line} 行`
+    const legalText = legal !== undefined && legal.length > 0 ? `；合法值：${legal.join('、')}` : ''
+    super(`${where}：${problem}${legalText}；修正方法：${fix}`)
+    this.name = 'SettlementParseError'
+  }
+}
+
+/** 解析出的条目在候选文本中的标题行号（不进入条目对象，避免影响序列化与比较）。 */
+const sectionLine = new WeakMap<object, number>()
+
+function parseFail(section: string, line: number | null, problem: string, fix: string, legal?: readonly string[]): never {
+  throw new SettlementParseError(section, line, problem, fix, legal)
+}
+
 function assertNoPreamble(lines: readonly string[], label: string): void {
   const firstSection = lines.findIndex((line) => /^##\s+/.test(line.trim()))
-  const preamble = lines
-    .slice(0, firstSection < 0 ? lines.length : firstSection)
-    .map((line) => line.trim())
-    .filter((line) => line !== '' && !line.startsWith('#'))
-  if (preamble.length > 0) throw new Error(`${label}存在未分类正文，不猜测归类`)
+  const end = firstSection < 0 ? lines.length : firstSection
+  for (let index = 0; index < end; index++) {
+    const line = (lines[index] ?? '').trim()
+    if (line !== '' && !line.startsWith('#')) {
+      parseFail(label, index + 1, `存在未分类正文「${line.slice(0, 20)}」，不猜测归类`, '把这行移到某个 `## ` 分类下；整段没有变更时删掉占位文字，只留标题行')
+    }
+  }
 }
 
 export function parseLedgerSections(text: string): LedgerSection[] {
@@ -93,24 +123,26 @@ export function parseLedgerSections(text: string): LedgerSection[] {
   let kind: LedgerKind | null = null
   let title: string | null = null
   let body: string[] = []
+  let itemLine = 0
 
   const flush = (): void => {
     if (kind !== null && title !== null) {
       const value = body.join('\n').trim()
-      if (value === '') throw new Error(`账本「${kind}/${title}」正文为空`)
-      sections.push({ kind, title, body: value })
+      if (value === '') parseFail('账本变更', itemLine, `条目「${kind}/${title}」正文为空`, '在该条目下写状态行和一两句说明；没有变更就删掉整个条目')
+      { const section = { kind, title, body: value }; sectionLine.set(section, itemLine); sections.push(section) }
     }
     body = []
   }
 
   assertNoPreamble(lines, '账本变更')
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const lineNo = index + 1
     const category = line.match(/^##\s+(.+?)\s*$/)?.[1]?.trim()
     const item = line.match(/^###\s+(.+?)\s*$/)?.[1]?.trim()
     if (category !== undefined) {
       flush()
       if (!(ledgerKinds as readonly string[]).includes(category)) {
-        throw new Error(`账本分类未知:${category}`)
+        parseFail('账本变更', lineNo, `分类未知「${category}」`, '把这行 `## ` 后的分类改成合法值之一，一行只写一个', ledgerKinds)
       }
       kind = category as LedgerKind
       title = null
@@ -118,13 +150,14 @@ export function parseLedgerSections(text: string): LedgerSection[] {
     }
     if (item !== undefined) {
       flush()
-      if (kind === null) throw new Error(`账本条目「${item}」缺少分类`)
+      if (kind === null) parseFail('账本变更', lineNo, `条目「${item}」缺少分类`, '在它前面加一行 `## <分类>`', ledgerKinds)
       title = item
+      itemLine = lineNo
       continue
     }
     if (title !== null) body.push(line)
     else if (line.trim() !== '' && !line.trim().startsWith('#')) {
-      throw new Error('账本变更存在未分类正文，不猜测归类')
+      parseFail('账本变更', lineNo, '存在未分类正文，不猜测归类', '把这行移到某个 `### 条目` 下；整段没有变更时删掉占位文字')
     }
   }
   flush()
@@ -137,24 +170,26 @@ export function parseMemorySections(text: string): MemorySection[] {
   let kind: MemoryKind | null = null
   let title: string | null = null
   let body: string[] = []
+  let itemLine = 0
 
   const flush = (): void => {
     if (kind !== null && title !== null) {
       const value = body.join('\n').trim()
-      if (value === '') throw new Error(`记忆「${kind}/${title}」正文为空`)
-      sections.push({ kind, title, body: value })
+      if (value === '') parseFail('本书层记忆候选', itemLine, `条目「${kind}/${title}」正文为空`, '在该条目下写状态、描述和正文；没有候选就删掉整个条目')
+      { const section = { kind, title, body: value }; sectionLine.set(section, itemLine); sections.push(section) }
     }
     body = []
   }
 
   assertNoPreamble(lines, '本书层记忆候选')
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const lineNo = index + 1
     const category = line.match(/^##\s+(.+?)\s*$/)?.[1]?.trim()
     const item = line.match(/^###\s+(.+?)\s*$/)?.[1]?.trim()
     if (category !== undefined) {
       flush()
       if (!(memoryKinds as readonly string[]).includes(category)) {
-        throw new Error(`记忆分类未知:${category}`)
+        parseFail('本书层记忆候选', lineNo, `分类未知「${category}」`, '把这行 `## ` 后的分类改成合法值之一，一行只写一个', memoryKinds)
       }
       kind = category as MemoryKind
       title = null
@@ -162,13 +197,14 @@ export function parseMemorySections(text: string): MemorySection[] {
     }
     if (item !== undefined) {
       flush()
-      if (kind === null) throw new Error(`记忆条目「${item}」缺少分类`)
+      if (kind === null) parseFail('本书层记忆候选', lineNo, `条目「${item}」缺少分类`, '在它前面加一行 `## <分类>`', memoryKinds)
       title = item
+      itemLine = lineNo
       continue
     }
     if (title !== null) body.push(line)
     else if (line.trim() !== '' && !line.trim().startsWith('#')) {
-      throw new Error('本书层记忆候选存在未分类正文，不猜测归类')
+      parseFail('本书层记忆候选', lineNo, '存在未分类正文，不猜测归类', '把这行移到某个 `### 条目` 下；整段没有候选时删掉占位文字')
     }
   }
   flush()
@@ -180,13 +216,14 @@ export function parseTimelineSections(text: string): Section[] {
   const sections: Section[] = []
   let title: string | null = null
   let body: string[] = []
+  let itemLine = 0
 
   const flush = (): void => {
     if (title !== null) {
       const value = body.join('\n').trim()
-      if (value === '') throw new Error(`时间线事件「${title}」正文为空`)
+      if (value === '') parseFail('时间线变更', itemLine, `事件「${title}」正文为空`, '在该事件下写「- 事件：<一句话>」和「- 时点：<时点>」')
       if (!/(?:^|\n)\s*[-*]?\s*事件[：:]/m.test(value)) {
-        throw new Error(`时间线事件「${title}」缺少事件字段`)
+        parseFail('时间线变更', itemLine, `事件「${title}」缺少事件字段`, '在该事件下加一行「- 事件：<一句话>」')
       }
       sections.push({ title, body: value })
     }
@@ -194,16 +231,18 @@ export function parseTimelineSections(text: string): Section[] {
   }
 
   assertNoPreamble(lines, '时间线变更')
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const lineNo = index + 1
     const item = line.match(/^##\s+(.+?)\s*$/)?.[1]?.trim()
     if (item !== undefined) {
       flush()
       title = item
+      itemLine = lineNo
       continue
     }
     if (title !== null) body.push(line)
     else if (line.trim() !== '' && !line.trim().startsWith('#')) {
-      throw new Error('时间线变更存在未分类正文，不猜测归类')
+      parseFail('时间线变更', lineNo, '存在未分类正文，不猜测归类', '把这行移到某个 `## <事件名>` 下；整段没有变更时删掉占位文字')
     }
   }
   flush()
@@ -229,24 +268,26 @@ export function parseFactSections(text: string): FactSection[] {
   let module: string | null = null
   let title: string | null = null
   let body: string[] = []
+  let itemLine = 0
 
   const flush = (): void => {
     if (module !== null && title !== null) {
       const value = body.join('\n').trim()
-      if (value === '') throw new Error(`事实变更「${module}/${title}」正文为空`)
+      if (value === '') parseFail('事实变更', itemLine, `条目「${module}/${title}」正文为空`, '在该条目下写一段本章成为事实的内容；没有就删掉整个条目')
       sections.push({ module, title, body: value })
     }
     body = []
   }
 
   assertNoPreamble(lines, '事实变更')
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const lineNo = index + 1
     const category = line.match(/^##\s+(.+?)\s*$/)?.[1]?.trim()
     const item = line.match(/^###\s+(.+?)\s*$/)?.[1]?.trim()
     if (category !== undefined) {
       flush()
       if (category === '' || category.includes('/') || category.includes('\\')) {
-        throw new Error(`事实变更模块名不合法:${category}`)
+        parseFail('事实变更', lineNo, `模块名不合法「${category}」`, '`## ` 后只写一个世界书模块名，不含 / 或 \\，从派发提示词给出的模块清单里选')
       }
       module = category
       title = null
@@ -254,13 +295,14 @@ export function parseFactSections(text: string): FactSection[] {
     }
     if (item !== undefined) {
       flush()
-      if (module === null) throw new Error(`事实条目「${item}」缺少模块`)
+      if (module === null) parseFail('事实变更', lineNo, `条目「${item}」缺少模块`, '在它前面加一行 `## <世界书模块名>`')
       title = item
+      itemLine = lineNo
       continue
     }
     if (title !== null) body.push(line)
     else if (line.trim() !== '' && !line.trim().startsWith('#')) {
-      throw new Error('事实变更存在未分类正文，不猜测归类')
+      parseFail('事实变更', lineNo, '存在未分类正文，不猜测归类', '把这行移到某个 `### 条目` 下；整段没有变更时删掉占位文字')
     }
   }
   flush()
@@ -285,7 +327,7 @@ function factOps(bookRoot: string, sections: readonly FactSection[], chapter: Ch
     const rel = `世界书/${section.module}/${section.title}.md`
     const existing = readExisting(bookRoot, rel)
     if (existing === null) {
-      if (mode === '更正') throw new Error(`世界书更正目标条目不存在:${rel}`)
+      if (mode === '更正') throw new Error(`世界书更正目标条目不存在：${rel}`)
       ops.push({
         relPath: rel,
         content: serializeDocument(
@@ -304,7 +346,7 @@ function factOps(bookRoot: string, sections: readonly FactSection[], chapter: Ch
       continue
     }
     const doc = parseDocument(existing)
-    if (!doc.ok) throw new Error(`世界书条目解析失败:${rel}——${doc.detail}`)
+    if (!doc.ok) throw new Error(`世界书条目解析失败：${rel}——${doc.detail}`)
     const parent = extractVersionFields(doc.data.fields).版本
     const generator = mode === '更正' ? '吃书补偿' : '事实沉淀'
     const fields = applyVersionFields(
@@ -342,14 +384,14 @@ function replaceEntry(existing: string, title: string, block: string, label: str
     const names = [...metadata.matchAll(/^\s*(?:[-*]\s*)?名称[：:]\s*(.*?)\s*$/gm)].map(match => match[1]!.trim())
     if (section.title === title || names.includes(title)) {
       if (names.length > 1 || (names.length === 1 && names[0] !== section.title)) {
-        throw new Error(`${label}更正目标名称与标题存在歧义:${title}`)
+        throw new Error(`${label}更正目标名称与标题存在歧义：${title}`)
       }
       if (section.title === title) target = section
     }
   }
-  if (target === undefined) throw new Error(`${label}更正目标条目不存在:${title}`)
+  if (target === undefined) throw new Error(`${label}更正目标条目不存在：${title}`)
   const replacementName = extractField(block.split(/^\s*###\s+正文\s*$/m)[0]!, '名称')
-  if (replacementName !== null && replacementName !== title) throw new Error(`${label}更正候选名称与标题存在歧义:${title}`)
+  if (replacementName !== null && replacementName !== title) throw new Error(`${label}更正候选名称与标题存在歧义：${title}`)
   const newline = existing.includes('\r\n') ? '\r\n' : '\n'
   const replacement = block.trim().replace(/\r?\n/g, newline) + newline + newline
   return existing.slice(0, target.start) + replacement + existing.slice(target.end)
@@ -358,53 +400,81 @@ function replaceEntry(existing: string, title: string, block: string, label: str
 /** 账本条目字段级校验(预校验与 ledgerBlock 共用;报错即入档时会说的原话)。 */
 export function checkLedgerSectionFields(section: LedgerSection): void {
   const status = extractField(section.body, '状态')
-  if (status === null) throw new Error(`账本「${section.kind}/${section.title}」缺少状态字段`)
-  const plannedFrom = extractField(section.body, '计划来源')
-  if (plannedFrom === null) throw new Error(`账本「${section.kind}/${section.title}」缺少计划来源字段`)
-  const candidateType = extractField(section.body, '类型')
-  if (candidateType !== null && candidateType !== section.kind) {
-    throw new Error(`账本「${section.kind}/${section.title}」类型与分类不一致:${candidateType}`)
-  }
+  const at = sectionLine.get(section) ?? null
+  const name = `条目「${section.kind}/${section.title}」`
   const allowed = section.kind === '线索'
     ? ['已埋', '已示', '已收', '已弃']
     : ['进行中', '已兑现', '已结束', '已放弃']
-  if (!allowed.includes(status)) throw new Error(`账本「${section.kind}/${section.title}」状态非法:${status}`)
+  if (status === null) parseFail('账本变更', at, `${name}缺少状态字段`, '在条目下加一行「- 状态：<合法值>」', allowed)
+  const plannedFrom = extractField(section.body, '计划来源')
+  if (plannedFrom === null) parseFail('账本变更', at, `${name}缺少计划来源字段`, '加一行「- 计划来源：<骨架/卷纲条目引用>」；本章新增的写「本章新增」')
+  const candidateType = extractField(section.body, '类型')
+  if (candidateType !== null && candidateType !== section.kind) {
+    parseFail('账本变更', at, `${name}类型「${candidateType}」与分类不一致`, `删掉「类型」行，或把它改成「${section.kind}」`)
+  }
+  if (!allowed.includes(status)) parseFail('账本变更', at, `${name}状态非法「${status}」`, '把「状态」改成合法值之一', allowed)
   if (section.kind === '线索') {
-    if (extractField(section.body, '埋设点') === null) throw new Error(`线索「${section.title}」缺少埋设点`)
-    if (extractField(section.body, '预期兑现区间') === null) throw new Error(`线索「${section.title}」缺少预期兑现区间`)
-    if (status === '已弃' && extractField(section.body, '弃因') === null) throw new Error(`线索「${section.title}」已弃但缺少弃因`)
+    if (extractField(section.body, '埋设点') === null) parseFail('账本变更', at, `线索「${section.title}」缺少埋设点`, '加一行「- 埋设点：第NNNN章」')
+    if (extractField(section.body, '预期兑现区间') === null) parseFail('账本变更', at, `线索「${section.title}」缺少预期兑现区间`, '加一行「- 预期兑现区间：第N-M章」')
+    if (status === '已弃' && extractField(section.body, '弃因') === null) parseFail('账本变更', at, `线索「${section.title}」已弃但缺少弃因`, '加一行「- 弃因：<一句话>」')
   }
 }
 
 /** 记忆条目字段级校验(预校验与沉淀写入共用)。 */
-function memoryDescription(body: string): { 描述?: string; body: string } {
+function memoryDescription(body: string): { 描述?: string; body: string; fields: Record<string, string> } {
   let metadata = true
-  let description: string | undefined
+  const fields: Record<string, string> = {}
   const lines: string[] = []
   for (const line of body.split('\n')) {
-    const match = /^\s*(?:[-*]\s*)?描述[：:]\s*(.*)$/.exec(line)
+    const match = /^\s*(?:[-*]\s*)?(类|状态|来源|裁决记录|描述|操作)[：:]\s*(.*)$/.exec(line)
     if (metadata && match) {
-      if (description !== undefined || !match[1]!.trim()) throw new Error('记忆描述须为一条非空单行')
-      description = match[1]!.trim()
+      const key = match[1]!, value = match[2]!.trim()
+      if (Object.hasOwn(fields, key) || !value) parseFail('本书层记忆候选', null, `记忆${key}须为一条非空单行`, `每个条目只写一行「${key}：<内容>」，不要留空`)
+      fields[key] = value
       continue
     }
-    if (line.trim() && !/^\s*(?:[-*]\s*)?(?:类|状态|来源|裁决记录)[：:]/.test(line)) metadata = false
+    if (line.trim()) metadata = false
     lines.push(line)
   }
-  return { ...(description === undefined ? {} : { 描述: description }), body: lines.join('\n') }
+  return { ...(fields['描述'] === undefined ? {} : { 描述: fields['描述'] }), fields, body: lines.join('\n').trim() }
 }
 
 export function checkMemorySectionFields(section: MemorySection): void {
-  const candidateKind = extractField(section.body, '类')
+  memoryOperation(section)
+  const candidateKind = memoryDescription(section.body).fields['类'] ?? null
   if (candidateKind !== null && candidateKind !== section.kind) {
-    throw new Error(`记忆「${section.kind}/${section.title}」类与分类不一致:${candidateKind}`)
+    parseFail('本书层记忆候选', sectionLine.get(section) ?? null, `条目「${section.kind}/${section.title}」类「${candidateKind}」与分类不一致`, `删掉「类」行，或把它改成「${section.kind}」`, memoryKinds)
   }
-  const candidateStatus = extractField(section.body, '状态')
+  const candidateStatus = memoryDescription(section.body).fields['状态'] ?? null
   if (candidateStatus !== null && candidateStatus !== '候选') {
-    throw new Error(`记忆「${section.kind}/${section.title}」候选状态非法:${candidateStatus}`)
+    parseFail('本书层记忆候选', sectionLine.get(section) ?? null, `条目「${section.kind}/${section.title}」候选状态非法「${candidateStatus}」`, '把「状态」改成「候选」', ['候选'])
   }
-  const content = stripFields(memoryDescription(section.body).body, ['类', '状态', '来源', '裁决记录'])
-  if (content === '') throw new Error(`记忆「${section.kind}/${section.title}」正文为空`)
+  const content = memoryDescription(section.body).body
+  if (content === '') parseFail('本书层记忆候选', sectionLine.get(section) ?? null, `条目「${section.kind}/${section.title}」正文为空`, '在字段行之后写可复用的判断')
+}
+
+export function memoryOperation(section: MemorySection): '新增' | '更新' {
+  const operation = memoryDescription(section.body).fields['操作'] ?? '新增'
+  if (operation !== '新增' && operation !== '更新') parseFail('本书层记忆候选', sectionLine.get(section) ?? null, '记忆操作非法', '操作只填新增或更新', ['新增', '更新'])
+  return operation as '新增' | '更新'
+}
+
+/** Prepare-only proof of the exact original read for each deliberate update. */
+export function memoryUpdateBaselines(bookRoot: string, candidate: string | undefined, originals: Readonly<Record<string, string>> = {}): Record<string, string> {
+  const sections = candidate?.trim() ? parseMemorySections(candidate) : []
+  const updates = sections.filter(section => memoryOperation(section) === '更新')
+  const names = new Set(updates.map(section => section.title))
+  if (Object.keys(originals).some(name => !names.has(name))) throw new Error('记忆原文含未声明更新的条目，请核对候选')
+  const baselines = new Map<string, string>()
+  for (const section of updates) {
+    assertSegment(section.title, '记忆名称')
+    const original = Object.hasOwn(originals, section.title) ? originals[section.title] : undefined
+    if (typeof original !== 'string') throw new Error(`更新记忆「${section.title}」须提供已读取的完整原文`)
+    const current = readMemoryText(bookRoot, paths.本书记忆条目(section.title))
+    if (current === undefined || normalizeMemoryText(current) !== normalizeMemoryText(original)) throw new Error(`记忆原文已变化：${section.title}；请重读后准备定稿包`)
+    baselines.set(section.title, memoryTextHash(current))
+  }
+  return Object.fromEntries(baselines)
 }
 
 function ledgerBlock(section: LedgerSection, chapter: ChapterKey, source: string, decision: string): string {
@@ -511,7 +581,7 @@ function planSettlementUnsafe(
   if (timeline.length > 0) {
     const target = paths.账本('时间线')
     const existing = readExisting(bookRoot, target)
-    if (existing === null) return { ok: false, reason: `真源不存在:${target}` }
+    if (existing === null) return { ok: false, reason: `真源不存在：${target}` }
     ops.push({
       relPath: target,
       content: timeline.reduce(
@@ -530,13 +600,13 @@ function planSettlementUnsafe(
       for (const entry of entries) {
         const names = [...entry.body.matchAll(/^\s*(?:[-*]\s*)?名称[：:]\s*(.*?)\s*$/gm)].map(match => match[1]!.trim())
         if (names.length > 1 || (names.length === 1 && names[0] !== entry.title)) {
-          return { ok: false, reason: `账本「${kind}」更正候选名称与标题存在歧义:${entry.title}` }
+          return { ok: false, reason: `账本「${kind}」更正候选名称与标题存在歧义：${entry.title}` }
         }
       }
     }
     const target = paths.账本(kind)
     const existing = readExisting(bookRoot, target)
-    if (existing === null) return { ok: false, reason: `真源不存在:${target}` }
+    if (existing === null) return { ok: false, reason: `真源不存在：${target}` }
     ops.push({
       relPath: target,
       content: entries.reduce(
@@ -548,15 +618,31 @@ function planSettlementUnsafe(
 
   const memoryText = readOptional(packageAbs, candidateFiles.memory)
   const memory = candidateIsNonEmpty(packageAbs, candidateFiles.memory) ? parseMemorySections(memoryText) : []
+  let memoryBaselines: Record<string, unknown> = {}
+  if (mode === '追加' && memory.some(section => memoryOperation(section) === '更新')) {
+    const manifest = parseMachineJson(fs.readFileSync(path.join(packageAbs, '清单.json'), 'utf8'), MACHINE_SCHEMA_VERSION)
+    if (!manifest.ok) return { ok: false, reason: '记忆更新清单无效，请重新准备定稿包' }
+    const baselines = manifest.data['记忆更新基线']
+    if (!baselines || typeof baselines !== 'object' || Array.isArray(baselines)) return { ok: false, reason: '记忆更新缺少原文基线，请重新准备定稿包' }
+    memoryBaselines = baselines as Record<string, unknown>
+  }
   const memoryInputs: BookMemoryInput[] = []
   for (const section of memory) {
     checkMemorySectionFields(section)
     const content = memoryDescription(section.body)
+    const operation = mode === '更正' ? '更新' : memoryOperation(section)
+    const baseline = memoryBaselines[section.title]
+    if (mode === '追加' && operation === '更新' && (typeof baseline !== 'string' || !/^[a-f0-9]{64}$/.test(baseline))) {
+      return { ok: false, reason: `记忆「${section.title}」缺少有效的更新原文基线` }
+    }
     memoryInputs.push({
       类: section.kind,
       名称: section.title,
+      操作: operation,
+      ...(mode === '更正' ? { 原文: readMemoryText(bookRoot, paths.本书记忆条目(section.title)) }
+        : operation === '更新' ? { 基线哈希: baseline as string } : {}),
       ...(content.描述 === undefined ? {} : { 描述: content.描述 }),
-      正文: stripFields(content.body, ['类', '状态', '来源', '裁决记录']),
+      正文: content.body,
       来源: source,
       裁决记录: approval.裁决记录,
     })

@@ -1,0 +1,747 @@
+{
+  "docs/user/beginner.md": {
+    "ratio": 0.981,
+    "strong": 2,
+    "format": 0
+  },
+  "docs/user/configuration.md": {
+    "ratio": 0.99,
+    "strong": 1,
+    "format": 0
+  },
+  "docs/user/editor.md": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/enhanced-index.md": {
+    "ratio": 0.993,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/first-book.md": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/install.md": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/privacy.md": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/reference-analysis.md": {
+    "ratio": 0.978,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/result-cards.md": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/troubleshooting.md": {
+    "ratio": 0.994,
+    "strong": 3,
+    "format": 0
+  },
+  "docs/user/ui-reference.md": {
+    "ratio": 0.99,
+    "strong": 1,
+    "format": 0
+  },
+  "docs/user/upgrade-backup.md": {
+    "ratio": 0.967,
+    "strong": 0,
+    "format": 0
+  },
+  "docs/user/workflows.md": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-analyze/工序/导入与覆盖.md": {
+    "ratio": 0.967,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-analyze/工序/机制与灵感.md": {
+    "ratio": 0.923,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-analyze/工序/事实提取.md": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-analyze/SKILL.md": {
+    "ratio": 0.917,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-design/SKILL.md": {
+    "ratio": 0.911,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-director/SKILL.md": {
+    "ratio": 0.932,
+    "strong": 24,
+    "format": 9
+  },
+  "packages/bundle/skills/novel-drafting/SKILL.md": {
+    "ratio": 0.983,
+    "strong": 14,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-export/SKILL.md": {
+    "ratio": 0.943,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-inspiration/SKILL.md": {
+    "ratio": 0.932,
+    "strong": 3,
+    "format": 6
+  },
+  "packages/bundle/skills/novel-outline/SKILL.md": {
+    "ratio": 1,
+    "strong": 7,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-polish/工序/1-表达清理.md": {
+    "ratio": 0.982,
+    "strong": 3,
+    "format": 14
+  },
+  "packages/bundle/skills/novel-polish/工序/2-节奏与重塑.md": {
+    "ratio": 0.923,
+    "strong": 1,
+    "format": 24
+  },
+  "packages/bundle/skills/novel-polish/工序/3-平台格式.md": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-polish/SKILL.md": {
+    "ratio": 0.887,
+    "strong": 4,
+    "format": 1
+  },
+  "packages/bundle/skills/novel-review/底本/读者承诺审读.md": {
+    "ratio": 0.966,
+    "strong": 6,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/节奏与张力审读.md": {
+    "ratio": 0.984,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/情节与因果审读.md": {
+    "ratio": 0.983,
+    "strong": 6,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/全量审读.md": {
+    "ratio": 1,
+    "strong": 8,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/人物与关系审读.md": {
+    "ratio": 0.983,
+    "strong": 8,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/文风与表达审读.md": {
+    "ratio": 1,
+    "strong": 9,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/线索与伏笔审读.md": {
+    "ratio": 0.967,
+    "strong": 6,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/信息披露审读.md": {
+    "ratio": 1,
+    "strong": 8,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/章节结构审读.md": {
+    "ratio": 0.985,
+    "strong": 6,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/SKILL.md": {
+    "ratio": 0.984,
+    "strong": 16,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-revision/底本/改稿章程.md": {
+    "ratio": 0.92,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-revision/SKILL.md": {
+    "ratio": 1,
+    "strong": 11,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-settle/底本/沉淀对账.md": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-settle/SKILL.md": {
+    "ratio": 1,
+    "strong": 10,
+    "format": 0
+  },
+  "packages/bundle/src/approval-snapshot.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/design-commit-result.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/draft-length-feedback.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/gates.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/index.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/indexing/manager.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/indexing/notifications.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/native-write.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/novel-tools.ts": {
+    "ratio": 0.982,
+    "strong": 30,
+    "format": 3
+  },
+  "packages/bundle/src/paths.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/persona.ts": {
+    "ratio": 1,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/bundle/src/persona.ts#prompt": {
+    "ratio": 1,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/bundle/src/reference/host.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/reference/tools.ts": {
+    "ratio": 0.946,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/scripts/deterministic-checks.ts": {
+    "ratio": 1,
+    "strong": 4,
+    "format": 0
+  },
+  "packages/bundle/src/scripts/draft-length-cli.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/src/scripts/export-cli.ts": {
+    "ratio": 1,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/bundle/src/scripts/impact-cli.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/src/scripts/materials-cli.ts": {
+    "ratio": 1,
+    "strong": 4,
+    "format": 0
+  },
+  "packages/bundle/src/scripts/pack-cli.ts": {
+    "ratio": 1,
+    "strong": 4,
+    "format": 0
+  },
+  "packages/bundle/src/scripts/volume-summary-cli.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/src/status-context.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/status-context.ts#prompt": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/study/editor-requests.ts": {
+    "ratio": 0.978,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/bundle/src/study/editor-requests.ts#prompt": {
+    "ratio": 0.978,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/bundle/src/study/graph.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/study/service.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/study/web.ts": {
+    "ratio": 1,
+    "strong": 7,
+    "format": 0
+  },
+  "packages/bundle/src/study/workflow-types.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/study/workflow.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/tool-failure.ts": {
+    "ratio": 0.966,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/src/workspace.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/arbitration/ask.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 14
+  },
+  "packages/core/src/arbitration/channel.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/arbitration/kinds.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/assembly/assemble.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 5
+  },
+  "packages/core/src/assembly/read.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/assembly/sections.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/assembly/source.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/assembly/supplements.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/book/create.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/book/scaffold.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/commit/archive.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/commit/design.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/commit/git.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/commit/health.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/commit/history.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/commit/message.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/commit/paths.ts": {
+    "ratio": 1,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/core/src/commit/receipt.ts": {
+    "ratio": 1,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/core/src/derive/derive.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/derive/design.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/derive/scan.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/derive/states.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/design/chapter-length.ts": {
+    "ratio": 1,
+    "strong": 4,
+    "format": 0
+  },
+  "packages/core/src/design/contract.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/design/legacy-seed.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 1
+  },
+  "packages/core/src/design/seed.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/design/skeleton.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/design/volume.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/design/worldbook.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/evidence/record.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/export/index.ts": {
+    "ratio": 1,
+    "strong": 4,
+    "format": 0
+  },
+  "packages/core/src/gate/paths.ts": {
+    "ratio": 1,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/core/src/gate/preExecute.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/gate/writeDraft.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 1
+  },
+  "packages/core/src/impact/index.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 1
+  },
+  "packages/core/src/inspire/concept.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/inspire/pool.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/ledger/index.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/memory/author.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/memory/book.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/memory/catalog.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/memory/write.ts": {
+    "ratio": 1,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/core/src/outline/parse.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/outline/template.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/outline/write.ts": {
+    "ratio": 0.947,
+    "strong": 1,
+    "format": 3
+  },
+  "packages/core/src/prepare/pack.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/progress/index.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/recovery/index.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/reference/analysis.ts": {
+    "ratio": 0.976,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/core/src/reference/epub.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/reference/report.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/reference/storage.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/reference/txt.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/repo/atomic.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/repo/draft-length.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/repo/drafts.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/repo/frontmatter.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/repo/lock.ts": {
+    "ratio": 1,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/core/src/repo/paths.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/repo/schema.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/repo/transaction.ts": {
+    "ratio": 1,
+    "strong": 4,
+    "format": 0
+  },
+  "packages/core/src/retrieval/cache.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/retrieval/retry.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/retrieval/scene-sync.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/retrieval/scenes.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/retrieval/search.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/retrieval/source.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/core/src/retrieval/state.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/retrieval/sync.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/retrieval/vectors.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/revise/apply.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/revise/document.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/revise/proposal.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/settlement/decision.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/core/src/settlement/index.ts": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/core/src/summary/index.ts": {
+    "ratio": 1,
+    "strong": 0,
+    "format": 0
+  }
+}

@@ -120,7 +120,7 @@ describe('M1:applyRevision 契约加固', () => {
       补丁: { old: 'a', new: 'b' }, 范围: '世界书/人物档案/主角.md',
     })
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.reason).toBe('须呈报上游')
+    if (!r.ok) expect(r.reason).toMatch(/^须呈报上游/)
   })
 
   it('不带补丁只改处置 → 不产新稿,返回含 followup', () => {

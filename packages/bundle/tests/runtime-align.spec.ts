@@ -50,6 +50,12 @@ class AgentsStub extends Service {
   list = (): unknown[] => this.items
 }
 
+/** 这些对齐用例模拟写作模式；普通模式不注册小说工具。 */
+class WritingPresetStub extends Service {
+  constructor(ctx: Context) { super(ctx, 'agentPresets') }
+  serviceFor = (): { mode: 'writing' } => ({ mode: 'writing' })
+}
+
 /** 极窄 workspaceRegistry stub：真实服务键，认领测试工作范围。 */
 class WorkspaceRegistryStub extends Service {
   constructor(ctx: Context, private readonly workspace: string) { super(ctx, 'workspaceRegistry') }
@@ -99,6 +105,7 @@ function makeAgent(
 }
 
 async function loadBundle(root: Context, ws: string, agents: unknown[]): Promise<{ unload: () => Promise<void>; uq: UserQuestionsStub }> {
+  await root.plugin(WritingPresetStub)
   await root.plugin(UserQuestionsStub)
   await root.plugin(WorkspaceRegistryStubFactory(ws))
   await root.plugin(AgentsStub)

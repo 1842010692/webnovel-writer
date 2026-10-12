@@ -68,9 +68,9 @@ function readManifest(packageAbs: string): { readonly ok: true; readonly files: 
     return { ok: false, reason: '待定稿包缺清单.json,拒绝入档' }
   }
   const parsed = parseMachineJson(text, MACHINE_SCHEMA_VERSION)
-  if (!parsed.ok) return { ok: false, reason: `清单解析失败:${parsed.detail}` }
+  if (!parsed.ok) return { ok: false, reason: `清单解析失败：${parsed.detail}` }
   const raw = parsed.data['文件']
-  if (!Array.isArray(raw)) return { ok: false, reason: '清单缺「文件」数组,拒绝入档' }
+  if (!Array.isArray(raw)) return { ok: false, reason: '清单缺「文件」数组，拒绝入档' }
   const files: ManifestEntry[] = []
   for (const item of raw) {
     if (item === null || typeof item !== 'object' || Array.isArray(item)) {
@@ -101,22 +101,22 @@ function loadOps(
     let content = f.内容
     if (content === undefined) {
       if (!f.源 || packageAbs === null) return { ok: false, reason: `清单项「${f.目标}」无源文件也无内容` }
-      if (path.isAbsolute(f.源) || f.源.split(/[\\/]/).includes('..')) return { ok: false, reason: `清单源文件路径非法:${f.源}` }
+      if (path.isAbsolute(f.源) || f.源.split(/[\\/]/).includes('..')) return { ok: false, reason: `清单源文件路径非法：${f.源}` }
       const srcAbs = archiveFile(bookRoot, path.relative(bookRoot, path.join(packageAbs, f.源)))
       try {
         content = fs.readFileSync(srcAbs, 'utf-8')
       } catch {
-        return { ok: false, reason: `清单源文件不存在:${f.源}` }
+        return { ok: false, reason: `清单源文件不存在：${f.源}` }
       }
     }
     if (f.sha256 !== undefined && contentHash(content) !== f.sha256) {
-      return { ok: false, reason: `清单校验失败:「${f.目标}」sha256 不匹配` }
+      return { ok: false, reason: `清单校验失败：「${f.目标}」sha256 不匹配` }
     }
     const relPath = path.posix.normalize(destCheck.relPath)
     archiveFile(bookRoot, relPath)
     ops.push({ relPath, content })
   }
-  if (ops.length === 0) return { ok: false, reason: '清单文件列表为空,拒绝入档' }
+  if (ops.length === 0) return { ok: false, reason: '清单文件列表为空，拒绝入档' }
   return { ok: true, ops }
 }
 
@@ -129,7 +129,7 @@ function requestFingerprint(opts: ArchiveOptions, packageAbs: string | null, ops
         const bytes = fs.readFileSync(file)
         if (name === '清单.json') {
           const parsed = parseMachineJson(bytes.toString('utf8'), MACHINE_SCHEMA_VERSION)
-          if (!parsed.ok) throw new Error(`清单解析失败:${parsed.detail}`)
+          if (!parsed.ok) throw new Error(`清单解析失败：${parsed.detail}`)
           // The tool's trusted decision write is not a new business request.
           inputs[name] = contentHash(stableJson(Object.fromEntries(Object.entries(parsed.data).filter(([key]) => key !== '裁决'))))
         } else inputs[name] = contentHash(bytes)
@@ -148,14 +148,14 @@ function requestFingerprint(opts: ArchiveOptions, packageAbs: string | null, ops
 function commitArchive(root: string, dests: readonly string[], message: string): ArchiveResult {
   const commit = commitWithIsolatedIndex(root, dests, message)
   if (commit.status !== 0 || commit.noChanges) {
-    return { ok: false, written: true, reason: `文件已写入但提交失败,未形成提交:${commit.stderr.trim() || 'git commit 失败'}` }
+    return { ok: false, written: true, reason: `文件已写入但提交失败，未形成提交：${commit.stderr.trim() || 'git commit 失败'}` }
   }
   return { ok: true, message, dests }
 }
 
 function resumeArchive(root: string, receipt: ArchiveReceipt, provenance?: OperationProvenance): ArchiveResult {
   if (receipt.schema === 2 && stableJson(retconPackageInputs(root, receipt.retcon.packageDir)) !== stableJson(receipt.retcon.inputs)) {
-    return { ok: false, reason: '归档收据与原补偿包候选冲突，已保留，请核对后处理' }
+    return { ok: false, reason: '归档收据与原补偿包候选冲突，收据已保留，本次没有写入。请把冲突呈报作者，并核对 草稿区/.archive-receipts/ 中的收据' }
   }
   verifyArchiveOutputs(root, receipt)
   const health = checkGitHealth(root)
@@ -253,18 +253,18 @@ function archiveLocked(opts: ArchiveOptions, mode: 'ch' | 'retcon', identity?: R
       return resumeArchive(opts.bookRoot, receipt, opts.provenance)
     }
     if (!archiveReceiptCommitted(opts.bookRoot, receipt)) {
-      return { ok: false, reason: '归档收据与当前请求或候选冲突，尚有已写入但未提交的操作，请核对后处理' }
+      return { ok: false, reason: '归档收据与当前请求或候选冲突：有已写入但未提交的操作。请用原请求的参数重新调用以补提交；参数已改变时，把冲突呈报作者' }
     }
   }
   if (mode === 'ch') {
     const existing = loaded.ops.find(op => fs.existsSync(path.join(opts.bookRoot, op.relPath)))
     if (existing) {
       const different = fs.readFileSync(path.join(opts.bookRoot, existing.relPath), 'utf8') !== existing.content
-      return { ok: false, reason: `定稿只增不改,目标已存在${different ? '且内容不同' : ''}，无匹配可信收据，请核对后处理:${existing.relPath}` }
+      return { ok: false, reason: `定稿只增不改：目标 ${existing.relPath} 已存在${different ? '且内容不同' : ''}，但没有匹配的可信收据，本次没有写入。请把冲突呈报作者，由作者决定保留现有定稿还是走吃书补偿` }
     }
   } else if (loaded.ops.every(op => fs.existsSync(path.join(opts.bookRoot, op.relPath))
     && fs.readFileSync(path.join(opts.bookRoot, op.relPath), 'utf8') === op.content)) {
-    return { ok: false, reason: '吃书目标内容已相同且无匹配可信收据，无法确认附属沉淀是否已写入，请核对后处理' }
+    return { ok: false, reason: '吃书目标内容已相同，但没有匹配的可信收据，无法确认附属沉淀是否已写入。请把情况呈报作者，并核对账本、时间线和本书记忆是否已更新' }
   }
 
   let ops = [...loaded.ops]
@@ -291,7 +291,7 @@ function archiveLocked(opts: ArchiveOptions, mode: 'ch' | 'retcon', identity?: R
   }
   const destinations = new Set<string>()
   for (const op of ops) {
-    if (destinations.has(op.relPath)) return { ok: false, reason: `清单与沉淀目标重复:${op.relPath}` }
+    if (destinations.has(op.relPath)) return { ok: false, reason: `清单与沉淀目标重复：${op.relPath}` }
     destinations.add(op.relPath)
   }
   const extraDests: string[] = []
@@ -325,7 +325,7 @@ function archiveLocked(opts: ArchiveOptions, mode: 'ch' | 'retcon', identity?: R
     }
     writeBatchAtomic(opts.bookRoot, [...ops, archiveReceiptOp(nextReceipt)], opts.provenance === undefined ? {} : { provenance: opts.provenance })
   } catch (err) {
-    return { ok: false, reason: `原子写入失败:${String(err)}` }
+    return { ok: false, reason: `原子写入失败：${err instanceof Error ? err.message : String(err)}` }
   }
 
   return commitArchive(opts.bookRoot, dests, message)
@@ -379,7 +379,7 @@ export function archiveRetconRequest(
         && archivePathIdentity(item.retcon.chapter) === chapterIdentity))
       if (receipt !== undefined) {
         if (receipt.schema !== 2 || receipt.request !== request || archivePathIdentity(receipt.retcon.chapter) !== chapterIdentity) {
-          return { ok: false, reason: '归档收据与吃书请求冲突，请核对后处理' }
+          return { ok: false, reason: '归档收据与吃书请求冲突，本次没有写入。请把冲突呈报作者，并核对 草稿区/.archive-receipts/ 中的收据' }
         }
         return resumeArchive(opts.bookRoot, receipt, opts.provenance)
       }
@@ -394,10 +394,10 @@ export function archiveRetconRequest(
       // events are evidence of an uncertain write, never permission to generate another.
       const eventDir = `${path.posix.dirname(opts.chapter)}/补偿/`
       const pending = runGit(opts.bookRoot, ['--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', eventDir])
-      if (pending.status !== 0) return { ok: false, reason: `无法核对补偿事件提交状态:${pending.stderr}` }
+      if (pending.status !== 0) return { ok: false, reason: `无法核对补偿事件提交状态：${pending.stderr}` }
       const known = new Set(receipts.flatMap(item => item.outputs.map(output => output.relPath)))
       if (pending.stdout.split('\0').filter(Boolean).some(entry => !known.has(entry.slice(3)))) {
-        return { ok: false, reason: '存在未提交补偿事件且无匹配可信收据，请核对后处理' }
+        return { ok: false, reason: '存在未提交的补偿事件，但没有匹配的可信收据，本次没有写入。请把情况呈报作者，不要重复调用' }
       }
       const packageDir = `草稿区/提案/retcon-${scope}`
       // Validate the candidate directory before the callback can create it.

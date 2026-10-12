@@ -32,6 +32,7 @@ jobs:
       - run: pnpm audit --audit-level=high
       - run: pnpm lint
       - run: pnpm test:release
+      - run: pnpm docs:style --all --check
   quality:
     name: v8-quality-${{ matrix.node }}-${{ matrix.shard }}
     runs-on: windows-latest
@@ -77,8 +78,26 @@ jobs:
           include-hidden-files: true
           retention-days: 14
   portability:
-    name: v8-linux-observation
+    name: v8-linux
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.27.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.15.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+  macos:
+    name: v8-macos-observation
+    runs-on: macos-latest
     timeout-minutes: 15
     continue-on-error: true
     steps:
@@ -98,11 +117,12 @@ jobs:
   required:
     name: v8-required
     runs-on: ubuntu-latest
-    needs: [policy, quality]
+    needs: [policy, quality, portability]
     if: always()
     steps:
-      - name: All Windows checks passed
+      - name: All Windows and Linux checks passed
         env:
           RESULT: ${{ needs.quality.result }}
           POLICY: ${{ needs.policy.result }}
-        run: test "$RESULT" = success && test "$POLICY" = success
+          LINUX: ${{ needs.portability.result }}
+        run: test "$RESULT" = success && test "$POLICY" = success && test "$LINUX" = success

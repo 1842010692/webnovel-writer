@@ -1,3 +1,4 @@
+import { createPresetAgent } from './preset-agents.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -26,7 +27,7 @@ async function checkSchemaGreeting({ workspace, main, service, host }) {
     }
   }
   const offAdapter = service('llm').registerAdapter(['reference-schema-fixture'], new SchemaAdapter())
-  const handle = await service('agents').create({ sessionId: 'reference-schema-greeting', meta: { cwd: workspace }, agentOptions: { provider: 'reference-schema-fixture', model: 'fixture' } })
+  const handle = await createPresetAgent(service('agents'), { sessionId: 'reference-schema-greeting', meta: { cwd: workspace }, agentOptions: { provider: 'reference-schema-fixture', model: 'fixture' } })
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { off(); reject(new Error('schema greeting did not finish')) }, 10000)

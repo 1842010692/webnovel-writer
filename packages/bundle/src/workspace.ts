@@ -41,7 +41,7 @@ export function validateWorkspacePath(
   const real = fs.realpathSync(candidate)
   if (resolveByPath(real) !== undefined) return { ok: false, reason: '该目录已是注册的 workspace' }
   if (isInsideAnyWorkspace(real)) return { ok: false, reason: '该目录位于已注册 workspace 内部' }
-  if (isGitRepo(real)) return { ok: false, reason: '工作范围本身不得是 git 仓(会与各书仓的 git -C 打架,造嵌套仓)' }
+  if (isGitRepo(real)) return { ok: false, reason: '工作范围本身不得是 git 仓(会与各书仓的 git -C 打架，造嵌套仓)' }
   if (insideGitRepo(real)) return { ok: false, reason: '工作范围不得落在别人的 git 仓内部(否则 findProjectRoot 命中外层仓)' }
   return { ok: true }
 }

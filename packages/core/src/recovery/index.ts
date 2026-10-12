@@ -39,7 +39,7 @@ function advice(环节: string): string {
     '审核': '执行审核方案，确保每条发现项有处置状态。',
     '改稿': '按审核发现项处置并回查硬约束。',
     '定稿准备与沉淀': '补齐七件待定稿包并呈报卷对账偏离。',
-    '作者定稿裁决': '等待作者批准或退回定稿包。',
+    '作者定稿裁决': '等待作者批准或退回待定稿包。',
     '定稿入档': '按清单原子写入并提交 ch:。',
     '完成': '本章已完成，可从近况进入下一章。',
   }
@@ -78,7 +78,7 @@ function renderStatusCardFrom(key: ChapterKey, derived: ChapterDerivation, statu
   const marker = derived.叠加标记.length === 0 ? '无' : derived.叠加标记.join('、')
   return [
     `近况｜卷${String(key.卷).padStart(2, '0')} 第${String(key.章).padStart(4, '0')}章 ${key.章名}`,
-    `建议环节：${derived.建议.环节}（§8 第${derived.建议.row}行；建议仅供参考，判断归主 Agent）`,
+    `建议环节：${derived.建议.环节}（§8 第${derived.建议.row}行；建议仅供参考，判断归主控）`,
     `复核标记：${marker}`,
     ...status.lines,
     `下一步：${advice(derived.建议.环节)}`,

@@ -28,12 +28,11 @@ function depsOf(ws: string, bookRoot: string) {
 }
 
 describe('gate 分区判定（A2a/A2b + N5/N10 修复）', () => {
-  it('A2a: 裸相对路径拒绝', () => {
+  it('普通相对路径不增加插件审批', () => {
     const { ws, bookRoot } = makeWorkspace()
     const d = depsOf(ws, bookRoot)
     const r = decideTargetForFile('草稿区/章细纲/x.md', d)
-    expect(r.kind).toBe('deny')
-    expect(r.kind === 'deny' ? r.reason : '').toContain('裸相对路径拒绝')
+    expect(r.kind).toBe('allow')
   })
 
   it('A2b: 书房写入允许（以 工作范围/书房 为界）', () => {
@@ -72,12 +71,12 @@ describe('gate 分区判定（A2a/A2b + N5/N10 修复）', () => {
     expect(r.kind === 'deny' ? r.reason : '').toContain('真源')
   })
 
-  it('绝对路径在工作范围外触发 ask (N10)', () => {
+  it('非书仓绝对路径交回宿主规则', () => {
     const { ws, bookRoot } = makeWorkspace()
     const d = depsOf(ws, bookRoot)
     const outside = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'webnovel-out-')), 'x.md')
     const r = decideTargetForFile(outside, d)
-    expect(r.kind).toBe('ask')
+    expect(r.kind).toBe('allow')
   })
 
   it('未知书id 拒绝', () => {

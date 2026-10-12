@@ -11,7 +11,7 @@ import { paths } from '../repo/paths'
 import { MACHINE_SCHEMA_VERSION, parseMachineJson, serializeMachineJson } from '../repo/schema'
 import { bookWriter } from '../repo/atomic'
 
-export const 处置状态列表 = ['待处理', '已接受修改', '已解决', '作者保留', '已驳回', '无法判断'] as const
+export const 处置状态列表 = ['待处理', '已接受修改', '已解决', '作者保留', '已驳回', '无法判断', '已转提案'] as const
 export type 处置状态 = (typeof 处置状态列表)[number]
 
 export interface Finding {
@@ -34,6 +34,7 @@ export interface Finding {
   readonly 处置: 处置状态
   /** 改稿批回填:子代理映射清单或作者口述的那一行改动说明。 */
   readonly 处置说明?: string
+  readonly 转交提案?: { readonly 提案编号: string }
 }
 
 export interface ModuleRunState {
@@ -65,7 +66,7 @@ export interface ReviewRecord {
   readonly 待继承处置?: readonly ReviewDisposition[]
 }
 
-export type ReviewDisposition = Pick<Finding, '模块名' | '证据位置' | '问题说明' | '处置状态' | '处置说明'>
+export type ReviewDisposition = Pick<Finding, '模块名' | '证据位置' | '问题说明' | '处置状态' | '处置说明' | '转交提案'>
 
 export function emptyReviewRecord(): ReviewRecord {
   return { schemaVersion: MACHINE_SCHEMA_VERSION, 完成: false, 问题: [], 模块: {} }
@@ -130,11 +131,21 @@ function asDisposition(v: unknown): 处置状态 {
   return '待处理'
 }
 
-function asFinding(raw: unknown): Finding | null {
+/** Wire values stay pending for older readers; only this reader understands the extension. */
+export function storedDisposition(raw: { readonly 处置状态?: unknown; readonly 处置?: unknown; readonly 转交提案?: unknown }): 处置状态 {
+  if (raw.处置状态 !== undefined && raw.处置 !== undefined && raw.处置状态 !== raw.处置) return '待处理'
+  const value = asDisposition(raw.处置状态 ?? raw.处置)
+  const forward = raw.转交提案
+  if (value === '待处理' && forward !== null && typeof forward === 'object' && '提案编号' in forward
+    && typeof forward.提案编号 === 'string' && /^\d{4}$/.test(forward.提案编号)) return '已转提案'
+  return value === '已转提案' ? '待处理' : value
+}
+
+function asFinding(raw: unknown, stored = true): Finding | null {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
   const o = raw as Record<string, unknown>
   // 单一解析:两个字段同义,处置状态为准、处置兜底,避免两字段各自解析后分叉
-  const 处置 = asDisposition(o['处置状态'] ?? o['处置'])
+  const 处置 = stored ? storedDisposition(o) : asDisposition(o['处置状态'] ?? o['处置'])
   return {
     审核编号: typeof o['审核编号'] === 'string' ? o['审核编号'] : '',
     模块名: typeof o['模块名'] === 'string' ? o['模块名'] : '',
@@ -152,13 +163,14 @@ function asFinding(raw: unknown): Finding | null {
     材料完整性: typeof o['材料完整性'] === 'string' ? o['材料完整性'] : '',
     处置状态: 处置,
     处置,
+    ...(处置 === '已转提案' && o['转交提案'] !== undefined ? { 转交提案: o['转交提案'] as Finding['转交提案'] } : {}),
     ...(typeof o['处置说明'] === 'string' ? { 处置说明: o['处置说明'] } : {}),
   }
 }
 
 /** 子 Agent 产出的发现项规范化(发现项回写通道入口;解析失败的条目返回 null)。 */
 export function normalizeFinding(raw: unknown): Finding | null {
-  return asFinding(raw)
+  return asFinding(raw, false)
 }
 
 export function loadReviewRecord(bookRoot: string, key: Pick<ChapterKey, '卷' | '章名'>): ReviewRecord | null {
@@ -170,13 +182,13 @@ export function loadReviewRecord(bookRoot: string, key: Pick<ChapterKey, '卷' |
 function parseReviewRecord(text: string): ReviewRecord {
   const r = parseMachineJson(text, MACHINE_SCHEMA_VERSION)
   if (!r.ok) return { ...emptyReviewRecord(), 完成: false }
-  const 问题 = Array.isArray(r.data['问题']) ? r.data['问题'].map(asFinding).filter((x): x is Finding => x !== null) : []
+  const 问题 = Array.isArray(r.data['问题']) ? r.data['问题'].map(raw => asFinding(raw)).filter((x): x is Finding => x !== null) : []
   const 待继承处置: ReviewDisposition[] = Array.isArray(r.data['待继承处置'])
     ? r.data['待继承处置'].flatMap((raw) => {
       const finding = asFinding(raw)
       if (finding === null || !finding.模块名 || finding.处置状态 === '待处理') return []
-      const { 模块名, 证据位置, 问题说明, 处置状态, 处置说明 } = finding
-      return [{ 模块名, 证据位置, 问题说明, 处置状态, ...(处置说明 === undefined ? {} : { 处置说明 }) }]
+      const { 模块名, 证据位置, 问题说明, 处置状态, 处置说明, 转交提案 } = finding
+      return [{ 模块名, 证据位置, 问题说明, 处置状态, ...(转交提案 === undefined ? {} : { 转交提案 }), ...(处置说明 === undefined ? {} : { 处置说明 }) }]
     }) : []
   const 模块Raw = r.data['模块']
   const 模块: Record<string, ModuleRunState> = {}
@@ -225,10 +237,17 @@ function parseReviewRecord(text: string): ReviewRecord {
 
 /** Single serialization contract for standalone writes and multi-file revision transactions. */
 export function serializeReviewRecord(record: ReviewRecord): string {
+  const wire = <T extends ReviewDisposition>(finding: T) => {
+    const { 转交提案, ...rest } = finding
+    if (finding.处置状态 !== '已转提案') return rest
+    if (转交提案 === undefined || !/^\d{4}$/.test(转交提案.提案编号)) throw new Error('已转提案必须带有效的转交记录')
+    return { ...rest, 处置状态: '待处理', ...('处置' in finding ? { 处置: '待处理' } : {}), 转交提案 }
+  }
   const payload: Record<string, unknown> = {
     ...record,
     完成: record.完成,
-    问题: record.问题.map((f) => ({ ...f, 处置: f.处置, 处置状态: f.处置状态 })),
+    问题: record.问题.map(wire),
+    ...(record.待继承处置 === undefined ? {} : { 待继承处置: record.待继承处置.map(wire) }),
     模块: record.模块,
     ...(record.审稿哈希 === undefined ? {} : { 审稿哈希: record.审稿哈希 }),
     ...(record.审读指纹 === undefined ? {} : { 审读指纹: record.审读指纹 }),

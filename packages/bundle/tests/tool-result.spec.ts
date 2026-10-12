@@ -12,6 +12,11 @@ const settled = (value: unknown): Extract<ToolCallPhaseProps, { phase: 'result' 
 } })
 
 describe('小说结果卡的证据边界', () => {
+  it('记忆卡显示实际范围与无变化结果', () => {
+    expect(novelToolTitles.novel_record_memory).toBe('记录记忆')
+    expect(novelResultModel(settled({ ok: true, scope: 'author', changed: false, commitState: 'not-required' })).facts)
+      .toEqual(expect.arrayContaining([{ label: '记忆归属', value: '作者' }, { label: '文件', value: '无变化' }]))
+  })
   it('覆盖实际生产工具名，不为测试 seed 注册入口', () => {
     expect(Object.keys(novelToolTitles).sort()).toEqual([...NOVEL_TOOL_NAMES].sort())
   })

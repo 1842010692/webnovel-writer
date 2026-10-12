@@ -1,4 +1,4 @@
-import type { ToolExecutionToken } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue, type JsonSchemaNode, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import { createReferenceTools, REFERENCE_TOOL_NAMES } from './reference/tools'
 import type { ReferenceHost } from './reference/host'
 /**
@@ -21,7 +21,7 @@ import type { ReferenceHost } from './reference/host'
  * - novel_apply_revision_batch: 处置批落实（改稿主路：一次写新稿并回写全部处置）
  * - novel_import_draft: 作者稿导入（作者手写/作者手改，与 AI 稿地位相同）
  * - novel_record_review_findings: 隔离子 Agent 发现项回写（堵空审通过；「作者意见」模块同此通道）
- * - novel_record_memory: 作者层记忆写入（书房，一事一文件＋索引同步；不进书仓 git）
+ * - novel_record_memory: 按 scope 保存作者／本书记忆，显式新增／更新与索引同步
  * - novel_record_proposal / novel_resolve_proposal: 提案登记（acquisition）与裁决回写（S4）
  * - novel_apply_retcon: 吃书补偿执行（emission，必过作者裁决；retcon: 提交＋补偿事件留痕，S4）
  * - novel_editor_suggest: 回复书房编辑器请求，只把结果交回编辑器，不写文件
@@ -31,6 +31,7 @@ import type { ReferenceHost } from './reference/host'
  */
 
 import { captureApprovalFiles } from './approval-snapshot'
+import { failureFrom, expectedFailure, FAILURE_FIELDS, normalizeFailure, toolFailure } from './tool-failure'
 import * as fs from 'node:fs'
 import * as nodePath from 'node:path'
 import type { ToolOutputDefinition } from '@deepseek-ai/dsh-tools'
@@ -39,6 +40,8 @@ import { DESIGN_COMMIT_FIELDS, NATIVE_DESIGN_TOOLS, designCommitResult, type Des
 import { acceptEditorSuggestion, type EditorRequestHub } from './study/editor-requests'
 import {
   activeChapterLine,
+  assertWritableTargets,
+  diagnoseBookRuntime,
   applyVersionFields,
   archiveRetconRequest,
   bumpVersion,
@@ -51,6 +54,9 @@ import {
   deriveDesign,
   listResumable,
   listAuthorMemory,
+  listBookMemoryEntries,
+  writeBookMemory,
+  authorMemoryWriteRoot,
   listConfirmedEmpty,
   parseWindow,
   paths,
@@ -227,8 +233,9 @@ export const NOVEL_TEST_TOOL_NAMES: readonly string[] = ['novel_seed_min_design'
 
 export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
   async function writeNative(root: string, op: FileOp, exec?: ToolExecContext): Promise<void> {
-    if (deps.nativeWrite === undefined) throw new Error('宿主原生 write 不可用，拒绝无版本保护的写入')
+    if (deps.nativeWrite === undefined) throw new Error('DSH 原生 write 不可用，拒绝无版本保护的写入')
     updateOperationTargets(root, undefined, [op.relPath])
+    assertWritableTargets(root, [op.relPath])
     await deps.nativeWrite(root, op, exec)
   }
   type BookResolved =
@@ -237,7 +244,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
 
   const resolveBook = (args: Record<string, unknown>, sessionContext?: ToolExecContext): BookResolved => {
     const bookId = args['bookId'] ? String(args['bookId']).trim() : undefined
-    if (!bookId) return { ok: false, reason: '未指定 bookId 参数（必填）' }
+    if (!bookId) return toolFailure('book-not-found', '未指定 bookId 参数（必填）')
     const bookRoot = deps.bookRootOfBookId(bookId, sessionContext?.agent)
     if (!bookRoot) return { ok: false, reason: `书id不存在或不唯一，未能定位书仓路径（bookId: ${bookId}）——若在工作台多工作区环境，请确认会话已附上书所在的工作范围` }
     return { ok: true, bookRoot }
@@ -248,12 +255,44 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
     const 卷 = Number(args['卷'])
     const 章 = Number(args['章'])
     const 章名 = String(args['章名'] ?? '').trim()
-    if (!Number.isSafeInteger(卷) || 卷 < 1) return { ok: false, reason: `卷必须是正整数（1 起）——请确认已传入 卷 参数（收到：${String(args['卷'] ?? '未传')}）` }
+    if (!Number.isSafeInteger(卷) || 卷 < 1) return { ok: false, reason: `卷必须是从 1 开始的正整数。请检查 卷 参数（收到：${String(args['卷'] ?? '未传')}）` }
     if (!Number.isSafeInteger(章) || 章 < 1) return { ok: false, reason: `章必须是正整数（全书连续，1 起）——请确认已传入 章 参数（收到：${String(args['章'] ?? '未传')}）` }
     if (章名 === '') return { ok: false, reason: '章名不能为空（须与近期窗口条目逐字一致）' }
     return { ok: true, key: { 卷, 章, 章名 } }
   }
 
+  /** 作者没有批准：区分关闭窗口与明确驳回，都不要重试。 */
+  const notApproved = (reason: string) => /取消|abort/i.test(reason)
+    ? toolFailure('author-cancelled', `作者裁决已取消，没有做出决定（${reason}），本次没有写入`)
+    : toolFailure('author-declined', `未获作者批准：${reason}`)
+
+  const memoryProperties: Record<string, JsonSchemaNode> = {
+    名称: { type: 'string', description: '一事一条；同一事项沿用已有名称' },
+    描述: { type: 'string', description: '一句话说明以后何时需要这条记忆' },
+    类: { type: 'string', enum: ['文风', '决策', '对话', '灵感'] },
+    标签: { type: 'array', items: { type: 'string' }, description: '可选定位标签，不决定作者或本书归属' },
+    来源: { type: 'string', description: '原始决定或定稿的来源' },
+    正文: { type: 'string', description: '简短的当前有效结论，保留必要条件和理由，不追加讨论流水' },
+  }
+  const memoryValidation: JsonSchemaNode = {
+    oneOf: (['book', 'author'] as const).flatMap(scope => (['新增', '更新'] as const).map(operation => ({
+      type: 'object', additionalProperties: false,
+      properties: {
+        ...memoryProperties, scope: { type: 'string', enum: [scope] }, 操作: { type: 'string', enum: [operation] },
+        ...(scope === 'book' ? { bookId: { type: 'string' } } : {}),
+        ...(operation === '更新' ? { 原文: { type: 'string', description: '先原生 read，再原样提供含 frontmatter 的完整旧条目' } } : {}),
+      },
+      required: ['scope', '操作', '名称', '描述', '类', '来源', '正文', ...(scope === 'book' ? ['bookId'] : []), ...(operation === '更新' ? ['原文'] : [])],
+    } satisfies JsonSchemaNode))),
+  }
+  const memoryParameters = {
+    type: 'object', additionalProperties: false,
+    properties: { ...memoryProperties, scope: { type: 'string', enum: ['book', 'author'] },
+      操作: { type: 'string', enum: ['新增', '更新'] },
+      bookId: { type: 'string', description: 'scope=book 必填；scope=author 不传' },
+      原文: { type: 'string', description: '仅更新必填，提供原生 read 读到的完整旧条目，含 frontmatter' } },
+    required: ['scope', '操作', '名称', '描述', '类', '来源', '正文'],
+  }
   const tools: NovelToolDefinition[] = [
     ...createReferenceTools(deps),
     {
@@ -284,7 +323,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
       },
       execute: (args, sessionContext) => {
         const root = deps.workspaceRoot(sessionContext?.agent)
-        if (root === undefined) return { ok: false, reason: '工作范围未就绪（未装机）' }
+        if (root === undefined) return toolFailure('host-unavailable', '工作范围未就绪：工作台还没有加载工作区')
         const books = scanBooks(root)
         const target = String(args['bookId']).trim()
         const matches = books.filter((b) => b.bookId === target || b.name === target)
@@ -350,7 +389,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
       },
       execute: (args, sessionContext) => {
         const root = deps.workspaceRoot(sessionContext?.agent)
-        if (root === undefined) return { ok: false, reason: '工作范围未就绪（未装机）' }
+        if (root === undefined) return toolFailure('host-unavailable', '工作范围未就绪：工作台还没有加载工作区')
         const bookName = String(args['bookName']).trim()
         const concept = args['concept'] as Concept
         const res = createBook({ workspaceRoot: root, 书名: bookName, concept })
@@ -410,7 +449,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         try {
           await writeNative(bookRoot, prepareContract(bookRoot, parts), sessionContext)
         } catch (err) {
-          return { ok: false, reason: `更新契约失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `更新契约失败：`)
         }
         // 提交点跟随作者确认（拍板 1）：只有已确认态产生 design: 提交；暂定/留白只写文件。
         if (state !== '已确认') {
@@ -453,12 +492,12 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         const book = resolveBook(args, sessionContext)
         if (!book.ok) return book
         const bookRoot = book.bookRoot
-        const bookId = args['bookId'] ? String(args['bookId']).trim() : undefined
-        if (!bookId) return { ok: false, reason: '未指定 bookId' }
+        // resolveBook 已校验 bookId 非空。
+        const bookId = String(args['bookId']).trim()
         try {
           seedMinDesign(bookRoot)
         } catch (err) {
-          return { ok: false, reason: `初始化最小设计失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `初始化最小设计失败：`)
         }
         // 整批一次提交（拍板 7）：seed 写入的全部设计侧工件随本次确认一并入 git。
         const 卷 = 1
@@ -503,6 +542,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             bookId: { type: 'string', description: '书id' },
             design: { type: 'object', description: '设计面事实清单与建议（建议仅供参考）；「内容问题」影响就绪建议，「已确认无内容」保留全部已确认空分部的提示，合法远期留白不阻塞' },
             chapters: { type: 'array', description: '章节事实清单列表（每章含逐行事实项与建议）' },
+            书仓诊断: { type: 'array', items: { type: 'string' }, description: '书仓运行目录的问题（残留锁、隔离的事务）；没有问题时不返回' },
             reason: { type: 'string', description: '失败原因' },
           },
           required: ['ok'],
@@ -513,8 +553,8 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         const book = resolveBook(args, sessionContext)
         if (!book.ok) return book
         const bookRoot = book.bookRoot
-        const bookId = args['bookId'] ? String(args['bookId']).trim() : undefined
-        if (!bookId) return { ok: false, reason: '未指定 bookId' }
+        // resolveBook 已校验 bookId 非空。
+        const bookId = String(args['bookId']).trim()
         try {
           // 两段返回(设计面 + 章节面),均为 R1 事实清单形状:逐项事实 + 可选建议(无权威,判断归主 Agent)
           // 设计面事实按当前卷选择器取卷(任务21, B3):active 取该卷;planning 检查规划目标卷;empty 默认卷1
@@ -532,9 +572,10 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             statusCard: renderStatusCard(bookRoot, r.key),
             ...(r.facts.审核记录哈希 === undefined ? {} : { 审核记录哈希: r.facts.审核记录哈希 }),
           }))
-          return { ok: true, bookId, design, chapters }
+          const 书仓诊断 = diagnoseBookRuntime(bookRoot)
+          return { ok: true, bookId, design, chapters, ...(书仓诊断.length === 0 ? {} : { 书仓诊断 }) }
         } catch (err) {
-          return { ok: false, reason: `推导状态失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `推导状态失败：`)
         }
       },
     },
@@ -639,7 +680,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
       },
       execute: async (args, sessionContext) => {
-        if (!sessionContext?.agent) return { ok: false, code: 'agent-required', reason: '索引管理需要当前主 Agent' }
+        if (!sessionContext?.agent) return { ok: false, code: 'agent-required', reason: '索引管理需要当前主控' }
         if (!deps.indexManage) return { ok: false, code: 'unavailable', reason: '后台索引服务尚未就绪' }
         const action = args['action'] ?? 'status'
         if (typeof action !== 'string' || !['status', 'enable', 'disable', 'update', 'pause', 'resume', 'retry', 'rebuild', 'rescan-scenes'].includes(action)) return { ok: false, code: 'invalid-action', reason: '未知索引操作' }
@@ -661,7 +702,8 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           章名: { type: 'string', description: '章名（如 第一章）' },
           时间线变更: { type: 'string', description: '沉淀候选：时间线变更全文（可选）' },
           账本变更: { type: 'string', description: '沉淀候选：账本变更全文（可选）' },
-          记忆候选: { type: 'string', description: '沉淀候选：本书层记忆候选全文（可选）' },
+          记忆候选: { type: 'string', description: '少量长期结论，可为空；条目操作为新增或更新' },
+          记忆原文: { type: 'object', additionalProperties: { type: 'string' }, description: '仅更新候选需要：名称到已读完整旧条目的映射' },
           章摘要: { type: 'string', description: '沉淀候选：章摘要全文（可选）' },
           事实变更: { type: 'string', description: '沉淀候选：事实变更全文（可选）' },
         },
@@ -694,7 +736,12 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           const s = String(raw)
           return s.trim() === '' ? undefined : s
         }
+        const memoryOriginals = args['记忆原文']
+        if (memoryOriginals !== undefined && (memoryOriginals === null || typeof memoryOriginals !== 'object' || Array.isArray(memoryOriginals) || Object.values(memoryOriginals).some(value => typeof value !== 'string'))) {
+          return toolFailure('invalid-argument', '记忆原文须为条目名称到完整原文的映射')
+        }
         const 沉淀候选 = {
+          ...(memoryOriginals === undefined ? {} : { 记忆原文: memoryOriginals as Record<string, string> }),
           ...(textArg('时间线变更') === undefined ? {} : { 时间线变更: textArg('时间线变更') }),
           ...(textArg('账本变更') === undefined ? {} : { 账本变更: textArg('账本变更') }),
           ...(textArg('记忆候选') === undefined ? {} : { 记忆候选: textArg('记忆候选') }),
@@ -711,7 +758,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             message: `待定稿包已组装至 ${res.dir}，请逐件审阅后呈报作者裁决；作者批准后再调用 novel_settle_chapter 沉淀。`,
           }
         } catch (err) {
-          return { ok: false, reason: `组装待定稿包失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `组装待定稿包失败：`)
         }
       },
     },
@@ -742,7 +789,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
       },
       execute: async (args, sessionContext) => {
-        if (!deps.askFn) return { ok: false, reason: '裁决通道未配置（需宿主注入 askFn）' }
+        if (!deps.askFn) return toolFailure('host-unavailable', '裁决通道不可用：当前环境无法弹出作者裁决窗口，本次没有写入')
         const book = resolveBook(args, sessionContext)
         if (!book.ok) return book
         const bookRoot = book.bookRoot
@@ -753,22 +800,21 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         const before = captureApprovalFiles(bookRoot, approvalFiles, args)
         if (!before.ok) return before
         const decision = await askAuthor(deps.askFn, '定稿入档', { 范围: `卷${key.卷.toString().padStart(2, '0')}/${key.章名}` }, { agent: sessionContext?.agent, signal: sessionContext?.signal })
-        if (!decision.ok) return { ok: false, reason: `未获作者批准: ${decision.reason}` }
-        if (sessionContext?.signal?.aborted) return { ok: false, reason: '作者裁决已取消（ASK_ABORTED）' }
+        if (!decision.ok) return notApproved(decision.reason)
+        if (sessionContext?.signal?.aborted) return toolFailure('author-cancelled', '作者裁决已取消（会话已中止），没有做出决定，本次没有写入')
         // decision.ok 只表示答案有效;退回同样是有效答案,须按 决定 判。
         const 裁决 = decision.决定 === '已批准' ? '已批准' : '已退回'
         return withBookWrite(bookRoot, () => {
-          if (sessionContext?.signal?.aborted) return { ok: false, reason: '作者裁决已取消（ASK_ABORTED）' }
+          if (sessionContext?.signal?.aborted) return toolFailure('author-cancelled', '作者裁决已取消（会话已中止），没有做出决定，本次没有写入')
           const currentBook = resolveBook(args, sessionContext)
-        if (!currentBook.ok || currentBook.bookRoot !== bookRoot) return { ok: false, reason: '等待作者裁决期间书id或归属已变化，请核对书目后重新呈报' }
+        if (!currentBook.ok || currentBook.bookRoot !== bookRoot) return toolFailure('approval-stale', '等待作者裁决期间书id或归属已变化，本次没有写入', '调用 novel_select_book 核对书目，再重新呈报作者。')
         const current = captureApprovalFiles(bookRoot, approvalFiles, args)
-          if (!current.ok || current.fingerprint !== before.fingerprint) return { ok: false, reason: '待定稿包在等待作者裁决期间已变化，旧批准不可使用；请重新呈报作者裁决' }
+          if (!current.ok || current.fingerprint !== before.fingerprint) return toolFailure('approval-stale', '待定稿包在等待作者裁决期间已变化，旧批准不可使用')
           const decisionWrite = writeSettlementDecision(bookRoot, key, 裁决)
           if (裁决 !== '已批准') {
             // 驳回本身必须保留原有语义;清单缺失时无法落裁决,但不能把作者决定
             // 误报成基础设施错误。若清单存在,上面的回写仍会打通退回通路。
-            const reason = `未获作者批准（作者${decision.决定}）,拒绝入档`
-            return { ok: false, reason }
+            return toolFailure('author-declined', `未获作者批准：作者${decision.决定}，本章没有入档`)
           }
           if (!decisionWrite.ok) return { ok: false, reason: decisionWrite.reason }
           try {
@@ -782,7 +828,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             if (!res.ok) return { ok: false, reason: res.reason }
             return { ok: true, message: `定稿沉淀完成（${res.message}），入档：${res.dests.join('、')}` }
           } catch (err) {
-            return { ok: false, reason: `定稿沉淀失败: ${err instanceof Error ? err.message : String(err)}` }
+            return failureFrom(err, `定稿沉淀失败：`)
           }
         }, provenanceOf(sessionContext))
       },
@@ -819,7 +865,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         if (!book.ok) return book
         const 卷 = Number(args['卷'])
         const 章名 = String(args['章名'] ?? '').trim()
-        if (!Number.isSafeInteger(卷) || 卷 < 1) return { ok: false, reason: `卷必须是正整数（收到：${String(args['卷'] ?? '未传')}）` }
+        if (!Number.isSafeInteger(卷) || 卷 < 1) return toolFailure('invalid-argument', `卷必须是从 1 开始的正整数。请检查 卷 参数（收到：${String(args['卷'] ?? '未传')}）`)
         if (章名 === '') return { ok: false, reason: '章名不能为空（须与近期窗口条目逐字一致）' }
         try {
           const rel = writeCandidate(book.bookRoot, {
@@ -830,7 +876,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           })
           return { ok: true, relPath: rel, message: `候选细纲已落草稿区：${rel}。完成后调 novel_confirm_outline 确认。` }
         } catch (err) {
-          return { ok: false, reason: `落候选细纲失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `落候选细纲失败：`)
         }
       },
     },
@@ -891,7 +937,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
               : `细纲《${章名}》已确认落真源（${commit.message}）${r.播报 && r.播报.length > 0 ? `；播报：${r.播报.join('；')}` : ''}`,
           }
         } catch (err) {
-          return { ok: false, reason: `确认细纲失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `确认细纲失败：`)
         }
       },
     },
@@ -930,7 +976,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           await writeNative(book.bookRoot, w, sessionContext)
           return finishDesignCommit(book.bookRoot, [w.relPath], args, '故事骨架', null, sessionContext)
         } catch (err) {
-          return { ok: false, reason: `更新故事骨架失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `更新故事骨架失败：`)
         }
       },
     },
@@ -969,7 +1015,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           await writeNative(book.bookRoot, w, sessionContext)
           return finishDesignCommit(book.bookRoot, [w.relPath], args, '分卷布局', null, sessionContext)
         } catch (err) {
-          return { ok: false, reason: `更新分卷布局失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `更新分卷布局失败：`)
         }
       },
     },
@@ -1007,7 +1053,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         const book = resolveBook(args, sessionContext)
         if (!book.ok) return book
         const 卷 = Number(args['卷'])
-        if (!Number.isSafeInteger(卷) || 卷 < 1) return { ok: false, reason: `卷必须是正整数（收到：${String(args['卷'] ?? '未传')}）` }
+        if (!Number.isSafeInteger(卷) || 卷 < 1) return toolFailure('invalid-argument', `卷必须是从 1 开始的正整数。请检查 卷 参数（收到：${String(args['卷'] ?? '未传')}）`)
         const 名称 = String(args['名称']).trim()
         const action = String(args['action'])
         try {
@@ -1026,7 +1072,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           await writeNative(book.bookRoot, prepareRecentWindow(卷, items), sessionContext)
           return finishDesignCommit(book.bookRoot, [rel], args, `近期窗口·${action}`, null, sessionContext)
         } catch (err) {
-          return { ok: false, reason: `窗口滚动失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `窗口滚动失败：`)
         }
       },
     },
@@ -1080,7 +1126,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           ensureModulesDeclared(book.bookRoot, [模块])
           return finishDesignCommit(book.bookRoot, [op.relPath, '世界书/模块声明.md'], args, `世界书条目·${名称}`, null, sessionContext)
         } catch (err) {
-          return { ok: false, reason: `写入世界书条目失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `写入世界书条目失败：`)
         }
       },
     },
@@ -1118,7 +1164,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         const book = resolveBook(args, sessionContext)
         if (!book.ok) return book
         const 卷 = Number(args['卷'])
-        if (!Number.isSafeInteger(卷) || 卷 < 1) return { ok: false, reason: `卷必须是正整数（收到：${String(args['卷'] ?? '未传')}）` }
+        if (!Number.isSafeInteger(卷) || 卷 < 1) return toolFailure('invalid-argument', `卷必须是从 1 开始的正整数。请检查 卷 参数（收到：${String(args['卷'] ?? '未传')}）`)
         const 目标 = String(args['目标'])
         try {
           const rel = 目标 === '卷纲' ? paths.卷纲(卷) : 目标 === '卷摘要' ? paths.卷摘要(卷) : paths.计划时间线(卷)
@@ -1132,7 +1178,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           else await writeNative(book.bookRoot, preparePlanTimeline(卷, String(args['正文'])), sessionContext)
           return finishDesignCommit(book.bookRoot, [rel], args, `${目标}·卷${String(卷).padStart(2, '0')}`, null, sessionContext)
         } catch (err) {
-          return { ok: false, reason: `确认${目标}失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `确认${目标}失败：`)
         }
       },
     },
@@ -1211,7 +1257,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             }
           }
           const res = assembleMaterials(book.bookRoot, input)
-          if (!res.ok) return { ok: false, 状态: res.状态, gaps: res.gaps, 材料清单哈希: res.材料清单哈希 ?? '', reason: `材料包组装失败:${res.gaps.join(';')}` }
+          if (!res.ok) return { ok: false, 状态: res.状态, gaps: res.gaps, 材料清单哈希: res.材料清单哈希 ?? '', reason: `材料包组装失败：${res.gaps.join(';')}` }
           const readiness = reportDraftReadiness(book.bookRoot, `草稿区/草稿/卷${String(卷).padStart(2, '0')}-${章名}/`)
           return {
             ok: true,
@@ -1223,13 +1269,13 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             message: `材料包已组装至 ${res.dir}（状态：${res.状态}${res.gaps.length > 0 ? `；缺:${res.gaps.join('、')}` : ''}）。${readiness?.说明 ?? ''}`,
           }
         } catch (err) {
-          return { ok: false, reason: `组装材料包失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `组装材料包失败：`)
         }
       },
     },
     {
       name: 'novel_apply_revision',
-      description: '落实一条发现项处置。带补丁且处置为已解决/已接受修改时产出新待审稿；不带补丁只记处置。可记录上游条目的作者保留/已驳回/无法判断，实际真源修改仍须呈报。先从 novel_get_story_status 取得本章审核记录哈希并传入，避免覆盖旧记录；多项走 novel_apply_revision_batch。',
+      description: '落实一条发现项处置。带补丁且处置为已解决/已接受修改时产出新待审稿；不带补丁只记处置。可记录上游条目的作者保留/已驳回/无法判断；关联提案已通过后记「已转提案」并传提案编号。实际真源修改只走提案。补丁新文只能是作者给出的原文改法（逐字新句或明确删除），此时传 生成模块: 作者手改；作者只给方向时，派改稿子代理。先从 novel_get_story_status 取得本章审核记录哈希并传入，避免覆盖旧记录；多项走 novel_apply_revision_batch。',
       parameters: {
         type: 'object',
         properties: {
@@ -1240,7 +1286,9 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           发现项编号: { type: 'string', description: '审核记录中的发现项编号' },
           审核记录哈希: { type: 'string', description: '状态查询或上次处置返回的记录 SHA-256；不一致时拒绝写入' },
           改动说明: { type: 'string', description: '本条处置说明（可选，省略保留已有说明）' },
-          处置: { type: 'string', enum: ['待处理', '已接受修改', '已解决', '作者保留', '已驳回', '无法判断'], description: '处置状态' },
+          提案编号: { type: 'string', pattern: '^\\d{4}$', description: '已转提案时传已通过且关联本发现项的四位提案编号' },
+          生成模块: { type: 'string', description: '作者逐字给出的小修传 作者手改' },
+          处置: { type: 'string', enum: ['待处理', '已接受修改', '已解决', '作者保留', '已驳回', '无法判断', '已转提案'], description: '处置状态。已转提案：影响真源的发现项已登记提案且作者已通过，必须传四位提案编号，提案须关联本章本发现项' },
           补丁旧文: { type: 'string', description: '补丁 old（可选；与补丁新文成对）' },
           补丁新文: { type: 'string', description: '补丁 new（可选）' },
         },
@@ -1274,12 +1322,14 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             处置: String(args['处置']) as 处置状态,
             ...(args['审核记录哈希'] === undefined ? {} : { 审核记录哈希: String(args['审核记录哈希']) }),
             ...(args['改动说明'] === undefined ? {} : { 改动说明: String(args['改动说明']) }),
+            ...(args['提案编号'] === undefined ? {} : { 提案编号: String(args['提案编号']) }),
+            ...(args['生成模块'] === undefined ? {} : { 生成模块: String(args['生成模块']) }),
             ...(hasPatch ? { 补丁: { old: String(args['补丁旧文']), new: String(args['补丁新文']) } } : {}),
           })
           if (!res.ok) return { ok: false, reason: res.reason }
           return { ok: true, relPath: res.relPath, 审核记录哈希: res.审核记录哈希, message: res.relPath === undefined ? '处置已记入审核记录（无补丁，不产生新稿）' : `已产出新一版待审稿：${res.relPath}` }
         } catch (err) {
-          return { ok: false, reason: `落实处置失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `落实处置失败：`)
         }
       },
     },
@@ -1304,8 +1354,9 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
               type: 'object',
               properties: {
                 发现项编号: { type: 'string', description: '审核记录中的发现项编号' },
-                处置: { type: 'string', enum: ['待处理', '已接受修改', '已解决', '作者保留', '已驳回', '无法判断'], description: '处置状态' },
+                处置: { type: 'string', enum: ['待处理', '已接受修改', '已解决', '作者保留', '已驳回', '无法判断', '已转提案'], description: '处置状态。已转提案：影响真源的发现项已登记提案且作者已通过，必须传四位提案编号，提案须关联本章本发现项' },
                 改动说明: { type: 'string', description: '该条对应的改动说明（可选）' },
+                提案编号: { type: 'string', pattern: '^\\d{4}$', description: '已转提案时传已通过且关联本发现项的四位提案编号' },
               },
               required: ['发现项编号', '处置'],
             },
@@ -1339,6 +1390,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           return {
             发现项编号: String(o['发现项编号'] ?? '').trim(),
             处置: String(o['处置'] ?? '') as 处置状态,
+            ...(o['提案编号'] === undefined ? {} : { 提案编号: String(o['提案编号']) }),
             ...(改动说明 === undefined ? {} : { 改动说明 }),
           }
         })
@@ -1364,7 +1416,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
               : `已写入新稿 ${res.relPath}，并回写 ${res.更新条数} 条处置`,
           }
         } catch (err) {
-          return { ok: false, reason: `处置批落实失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `处置批落实失败：`)
         }
       },
     },
@@ -1438,13 +1490,13 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             message: `作者稿已导入：${res.relPath}（生成模块 ${生成模块}，角色 ${角色}）。要跳过润色就传「角色: 待审稿」。`,
           }
         } catch (err) {
-          return { ok: false, reason: `作者稿导入失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `作者稿导入失败：`)
         }
       },
     },
     {
       name: 'novel_record_review_findings',
-      description: '把审读子 Agent 产出的发现项回写进审核记录（堵「空审通过」）。同一模块重复回写＝本轮结果整批替换；跨轮沿用按 模块名+证据位置+问题说明 认亲。全部模块回写仅表示报告齐全；证据须适用当前稿且发现项均有效处置，才能报告审核通过。',
+      description: '把审读子代理产出的发现项回写进审核记录（堵「空审通过」）。同一模块重复回写＝本轮结果整批替换；跨轮沿用按 模块名+证据位置+问题说明 认亲。全部模块回写仅表示报告齐全；证据须适用当前稿且发现项均有效处置，才能报告审核通过。',
       parameters: {
         type: 'object',
         properties: {
@@ -1506,7 +1558,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
               : `发现项已回写。尚待回写模块：${pending.join('、')}（全部回写后审核才完成）。${inheritNote(待继承处置数)}`,
           }
         } catch (err) {
-          return { ok: false, reason: `发现项回写失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `发现项回写失败：`)
         }
       },
     },
@@ -1522,6 +1574,9 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           内容: { type: 'string', description: '提案正文：改什么、为什么、影响面摘要' },
           来源: { type: 'string', description: '提案来源（如「第3章审核发现项 2 条」「作者对话指示」）' },
           影响分析: { type: 'string', description: '影响分析脚本输出的摘要（可登记后补）' },
+          关联发现项: { type: 'array', description: '从审核转交的提案须登记原发现项身份', items: { type: 'object', properties: {
+            卷: { type: 'integer', minimum: 1 }, 章: { type: 'integer', minimum: 1 }, 章名: { type: 'string' }, 发现项编号: { type: 'string' },
+          }, required: ['卷', '章', '章名', '发现项编号'] } },
         },
         required: ['bookId', '域', '类型', '内容', '来源'],
       },
@@ -1547,11 +1602,12 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             类型: (['补充设计', '修改计划', '事实更正', '吃书'] as const).includes(args['类型'] as never) ? (args['类型'] as '补充设计' | '修改计划' | '事实更正' | '吃书') : '修改计划',
             内容: String(args['内容'] ?? ''),
             来源: String(args['来源'] ?? '作者对话指示'),
+            ...(args['关联发现项'] === undefined ? {} : { 关联发现项: args['关联发现项'] as NonNullable<Parameters<typeof registerProposal>[1]['关联发现项']> }),
             ...(args['影响分析'] === undefined ? {} : { 影响分析: String(args['影响分析']) }),
           })
           return { ...r, message: `提案 ${r.编号} 已登记：${r.relPath}。先跑影响分析脚本补「影响分析」，再呈作者裁决（novel_resolve_proposal）。` }
         } catch (err) {
-          return { ok: false, reason: `提案登记失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `提案登记失败：`)
         }
       },
     },
@@ -1620,7 +1676,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
       },
       execute: async (args, sessionContext) => {
-        if (!deps.askFn) return { ok: false, reason: '裁决通道未配置（需宿主注入 askFn）' }
+        if (!deps.askFn) return toolFailure('host-unavailable', '裁决通道不可用：当前环境无法弹出作者裁决窗口，本次没有写入')
         const book = resolveBook(args, sessionContext)
         if (!book.ok) return book
         const bookRoot = book.bookRoot
@@ -1649,23 +1705,23 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         const before = captureApprovalFiles(bookRoot, approvalFiles, args)
         if (!before.ok) return before
         const decision = await askAuthor(deps.askFn, '吃书补偿', { 范围: `定稿/卷${key.卷.toString().padStart(2, '0')}/${key.章名}` }, { agent: sessionContext?.agent, signal: sessionContext?.signal })
-        if (!decision.ok) return { ok: false, reason: `未获作者批准: ${decision.reason}` }
-        if (sessionContext?.signal?.aborted) return { ok: false, reason: '作者裁决已取消（ASK_ABORTED）' }
-        if (decision.决定 !== '已批准') return { ok: false, reason: `作者${decision.决定}，拒绝补偿执行` }
+        if (!decision.ok) return notApproved(decision.reason)
+        if (sessionContext?.signal?.aborted) return toolFailure('author-cancelled', '作者裁决已取消（会话已中止），没有做出决定，本次没有写入')
+        if (decision.决定 !== '已批准') return toolFailure('author-declined', `未获作者批准：作者${decision.决定}，没有执行吃书补偿`)
 
         return withBookWrite(bookRoot, () => {
-        if (sessionContext?.signal?.aborted) return { ok: false, reason: '作者裁决已取消（ASK_ABORTED）' }
+        if (sessionContext?.signal?.aborted) return toolFailure('author-cancelled', '作者裁决已取消（会话已中止），没有做出决定，本次没有写入')
         const currentBook = resolveBook(args, sessionContext)
-        if (!currentBook.ok || currentBook.bookRoot !== bookRoot) return { ok: false, reason: '等待作者裁决期间书id或归属已变化，请核对书目后重新呈报' }
+        if (!currentBook.ok || currentBook.bookRoot !== bookRoot) return toolFailure('approval-stale', '等待作者裁决期间书id或归属已变化，本次没有写入', '调用 novel_select_book 核对书目，再重新呈报作者。')
         const current = captureApprovalFiles(bookRoot, approvalFiles, args)
-        if (!current.ok || current.fingerprint !== before.fingerprint) return { ok: false, reason: '待补偿内容在等待作者裁决期间已变化，请重新呈报作者裁决' }
+        if (!current.ok || current.fingerprint !== before.fingerprint) return toolFailure('approval-stale', '待补偿内容在等待作者裁决期间已变化，旧批准不可使用')
         const 定稿相对 = paths.定稿章(key.卷, key.章, key.章名)
         const res = archiveRetconRequest({ bookRoot, chapter: 定稿相对, request, provenance: provenanceOf(sessionContext) }, plannedPackageDir => {
         let 更正后全文: string
         try {
           const src = fs.readFileSync(nodePath.join(bookRoot, 定稿相对), 'utf-8')
           const doc = parseDocument(src)
-          if (!doc.ok) return { ok: false, reason: `定稿章解析失败:${doc.detail}` }
+          if (!doc.ok) return { ok: false, reason: `定稿章解析失败：${doc.detail}` }
           const parent = extractVersionFields(doc.data.fields).版本
           const baseVer = parent === null ? initialVersion('吃书补偿') : bumpVersion(parent, '吃书补偿')
           const fields = applyVersionFields(
@@ -1674,7 +1730,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
           )
           更正后全文 = serializeDocument(fields, 更正正文输入, 草稿字段序)
         } catch (err) {
-          return { ok: false, reason: `定稿章读取失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `定稿章读取失败：`)
         }
 
         // 沉淀候选（可选）：写入补偿包目录，走 planSettlement 整条更正既有条目
@@ -1746,10 +1802,10 @@ ${摘要现文}`,
             provenance: provenanceOf(sessionContext),
           }
         } catch (err) {
-          return { ok: false, reason: `吃书补偿失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `吃书补偿失败：`)
         }
         })
-        if (!res.ok) return { ok: false, reason: res.reason }
+        if (!res.ok) return res
         return {
           ok: true,
           dests: res.dests,
@@ -1761,46 +1817,61 @@ ${摘要现文}`,
     },
     {
       name: 'novel_record_memory',
-      description: '写作者层记忆条目（落书房/作者记忆/，一事一文件+索引同步重建；标签必填）。作者层资产不进书仓、不走 design: 提交。对话产生的决策/建议/解法值得记就当场写。',
-      parameters: {
-        type: 'object',
-        properties: {
-          bookId: { type: 'string', description: '书id（必填）' },
-          名称: { type: 'string', description: '条目标识（一事一文件的文件名主体）' },
-          描述: { type: 'string', description: '一行描述（专供召回判断）' },
-          类: { type: 'string', enum: ['文风', '决策', '对话', '灵感'], description: '条目类别' },
-          标签: { type: 'array', items: { type: 'string' }, description: '书名/卷/题材/维度标签（至少一条）' },
-          来源: { type: 'string', description: '章号或「对谈」' },
-          正文: { type: 'string', description: '条目正文（可用 [[条目名]] 互链）' },
-        },
-        required: ['bookId', '名称', '描述', '类', '标签', '来源', '正文'],
-      },
+      description: '谨慎记录长期记忆。scope=book 只记当前书，必须有 bookId；scope=author 只记明确跨书的偏好，不传 bookId。默认不写；仅保存作者明确要求记住，或已确认且以后持续有用、无法从真源恢复的结论。写前读索引和相关条目；没有新信息不写，同一事项更新原条目。操作为新增时不覆盖；更新须提供完整原文与合并后的简短正文。临时讨论、章节复述和真源已有内容不记；作者手改内容只按明确授权更新。',
+      parameters: memoryParameters,
       output: {
         schema: {
           type: 'object',
           properties: {
-            ok: { type: 'boolean', description: '是否成功' },
-            relPath: { type: 'string', description: '作者记忆条目路径（书房内）' },
-            updated: { type: 'boolean', description: '是否为更新既有条目' },
-            reason: { type: 'string', description: '失败原因' },
+            ok: { type: 'boolean' },
+            scope: { type: 'string', enum: ['book', 'author'], description: '实际记忆归属' },
+            bookId: { type: 'string' },
+            relPath: { type: 'string', description: '相对作者工作范围或本书根目录的实际路径' },
+            updated: { type: 'boolean' }, changed: { type: 'boolean' }, duplicate: { type: 'boolean' },
+            reason: { type: 'string' }, message: { type: 'string' }, ...DESIGN_COMMIT_FIELDS,
           },
           required: ['ok'],
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
       },
       execute: (args, sessionContext) => {
-        const root = deps.workspaceRoot(sessionContext?.agent)
-        if (root === undefined) return { ok: false, reason: '工作范围未就绪（未装机），书房不可用' }
-        const book = resolveBook(args, sessionContext)
-        if (!book.ok) return book
-        return writeAuthorMemory(root, {
-          名称: String(args['名称']),
-          描述: String(args['描述']),
-          类: String(args['类']) as '文风' | '决策' | '对话' | '灵感',
-          标签: Array.isArray(args['标签']) ? (args['标签'] as unknown[]).map(String) : [],
-          来源: String(args['来源']),
-          正文: String(args['正文']),
-        })
+        if (validateJsonSchemaValue(memoryValidation, args).length) return toolFailure('invalid-argument', '请明确记忆范围和新增／更新操作。本书范围需 bookId，作者范围不传 bookId；更新还需完整原文。')
+        const scope = args['scope'] as 'book' | 'author'
+        const workspace = deps.workspaceRoot(sessionContext?.agent)
+        if (workspace === undefined) return toolFailure('host-unavailable', '工作范围未就绪，无法记录记忆')
+        const resolved = scope === 'book' ? resolveBook(args, sessionContext) : { ok: true as const, bookRoot: workspace }
+        if (!resolved.ok) return resolved
+        const root = resolved.bookRoot
+        const input = {
+          名称: String(args['名称']), 描述: String(args['描述']),
+          类: args['类'] as '文风' | '决策' | '对话' | '灵感',
+          来源: String(args['来源']), 正文: String(args['正文']),
+          操作: args['操作'] as '新增' | '更新',
+          ...(args['原文'] === undefined ? {} : { 原文: String(args['原文']) }),
+          ...(args['标签'] === undefined ? {} : { 标签: args['标签'] as string[] }),
+        }
+        const directory = scope === 'book' ? '本书记忆' : '作者记忆'
+        try {
+          const writeRoot = scope === 'book' ? root : authorMemoryWriteRoot(root)
+          return withBookWrite(writeRoot, () => {
+            sessionContext?.signal?.throwIfAborted()
+            const targets = [`${directory}/${input.名称.trim()}.md`, `${directory}/索引.md`]
+            assertWritableTargets(writeRoot, targets)
+            const result = scope === 'book'
+              ? writeBookMemory(root, { ...input, 裁决记录: '对谈中已确认的记忆' })
+              : writeAuthorMemory(root, input)
+            if (!result.ok) return toolFailure(result.reason.includes('原文已变化') ? 'source-conflict' : 'invalid-argument', result.reason,
+              '读取最新索引和条目，核对后再调用；不要改名新增来绕过冲突。')
+            const value = { ...result, scope, ...(scope === 'book' ? { bookId: String(args['bookId']) } : {}) }
+            if (scope === 'author' || result.duplicate) return {
+              ...value, commitState: 'not-required', retryable: false,
+              message: result.changed ? '作者记忆已保存。' : '已有相同结论，本次没有写入。',
+            }
+            const commit = commitConfirmed({ bookRoot: root, paths: [result.relPath, paths.本书记忆索引()],
+              prefix: 'design', summary: `记忆：${input.名称}`, provenance: provenanceOf(sessionContext) })
+            return { ...value, ...designCommitResult(commit, '本书记忆已保存', args, sessionContext) }
+          }, provenanceOf(sessionContext))
+        } catch (error) { return failureFrom(error, '记忆保存失败：') }
       },
     },
     {
@@ -1851,7 +1922,7 @@ ${摘要现文}`,
           }
           return { ok: true, relPath, message: 文本 === null ? `已清除「${节名}」待补便签` : `已记待补便签（${节名}）：${文本}` }
         } catch (err) {
-          return { ok: false, reason: `待补便签失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `待补便签失败：`)
         }
       },
     },
@@ -1904,7 +1975,7 @@ ${摘要现文}`,
           for (const p of docPaths) {
             if (history[p] === undefined) history[p] = lastCommitOf(book.bookRoot, p)
           }
-          // 未决偏离 = 对账偏离项 − 作者层已处置条目（按本书标签筛,拍板 4）
+          // 本书当前决策优先；仅兼容明确标记本书的旧作者条目。
           let 未决偏离: string[] = []
           let 待核对: { 名称: string; 章号: number; 本章事实: string[] }[] = []
           let 疑似占位待核对: { 名称: string; 来源: string }[] = []
@@ -1913,9 +1984,13 @@ ${摘要现文}`,
             const 偏离 = [...recon.report.计划未兑现, ...recon.report.事实未计划].map((item) => item.名称)
             const ws = deps.workspaceRoot(sessionContext?.agent)
             const 书名 = nodePath.basename(book.bookRoot)
-            const 处置文本 = ws === undefined ? [] : listAuthorMemory(ws)
-              .filter((e) => e.类 === '决策' && e.标签.some((t) => t === 书名 || t === String(args['bookId'] ?? '')))
-              .map((e) => `${e.名称} ${e.描述} ${e.正文}`)
+            const 本书条目 = listBookMemoryEntries(book.bookRoot)
+            const 本书名称 = new Set(本书条目.map(entry => entry.名称))
+            const 旧作者条目 = ws === undefined ? [] : listAuthorMemory(ws).filter(entry =>
+              entry.适用范围 === undefined && !本书名称.has(entry.名称)
+              && entry.标签.some(tag => tag === 书名 || tag === String(args['bookId'] ?? '')))
+            const 处置文本 = [...本书条目, ...旧作者条目].filter(entry => entry.类 === '决策')
+              .map(entry => `${entry.名称} ${entry.描述 ?? ''} ${entry.正文}`)
             未决偏离 = 偏离.filter((名) => !处置文本.some((text) => text.includes(名)))
             // 章级待核对单独计数呈报(任务21, B1):不进未决偏离;非空时不得呈报无偏离
             待核对 = recon.report.章级待核对.map((p) => ({ 名称: p.计划项.名称, 章号: p.章号, 本章事实: p.本章事实.map((f) => f.名称) }))
@@ -1933,7 +2008,7 @@ ${摘要现文}`,
             ...(selection.kind === 'planning' ? { 规划卷: selection.规划卷 } : {}),
           }
         } catch (err) {
-          return { ok: false, reason: `进度卡查询失败: ${err instanceof Error ? err.message : String(err)}` }
+          return failureFrom(err, `进度卡查询失败：`)
         }
       },
     },
@@ -1995,7 +2070,7 @@ ${摘要现文}`,
   ])
   const nativeTools = NATIVE_DESIGN_TOOLS
   const registered = deps.testTools === true ? tools : tools.filter((tool) => !NOVEL_TEST_TOOL_NAMES.includes(tool.name))
-  return registered.map((tool) => {
+  const guarded = registered.map((tool) => {
     if (!locked.has(tool.name)) return tool
     return {
       ...tool,
@@ -2006,15 +2081,40 @@ ${摘要现文}`,
         try {
           if (nativeTools.has(tool.name)) {
             return withBookWriteAsync(root, async () => tool.execute(args, sessionContext), provenanceOf(sessionContext))
-              .catch((error: unknown) => ({ ok: false, reason: error instanceof Error ? error.message : String(error) }))
+              .catch((error: unknown) => failureFrom(error))
           }
           return withBookWrite(root, () => tool.execute(args, sessionContext), provenanceOf(sessionContext))
         } catch (error) {
-          return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+          return failureFrom(error)
         }
       },
     }
   })
+  // Every failure carries code and next so the main Agent can choose its next step.
+  return guarded.map((tool) => ({
+    ...tool,
+    output: withFailureFields(tool.output),
+    execute: (args: Record<string, unknown>, sessionContext?: ToolExecContext) => {
+      const failed = (error: unknown) => {
+        const result = expectedFailure(error)
+        if (result !== undefined) return result
+        throw error // Unexpected host failures retain isError/cancellation semantics.
+      }
+      try {
+        const result = tool.execute(args, sessionContext)
+        if (result !== null && typeof result === 'object' && typeof (result as PromiseLike<unknown>).then === 'function') {
+          return Promise.resolve(result).then(normalizeFailure, failed)
+        }
+        return normalizeFailure(result)
+      } catch (error) { return failed(error) }
+    },
+  }))
+}
+
+function withFailureFields(output: ToolOutputDefinition): ToolOutputDefinition {
+  const schema = (output as { schema?: { properties?: Record<string, unknown> } }).schema
+  if (schema?.properties === undefined) return output
+  return { ...output, schema: { ...schema, properties: { ...schema.properties, ...FAILURE_FIELDS } } } as ToolOutputDefinition
 }
 
 /** 重置轮次暂存的上一轮处置:明示条数与沿用规则,免得调用方以为上一轮结论凭空消失。 */

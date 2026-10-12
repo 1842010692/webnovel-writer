@@ -160,7 +160,7 @@ export function FocusEditor({ identity, buffer, store, sessionId, bufferKey, mem
     current.dispatch({ effects: addItems.of([pending]), selection: { anchor: target.to } })
     current.focus()
     try {
-      await requests.submit({
+      const result = await requests.submit({
         sessionId, key: bufferKey, identity, requestId: id, intent,
         ...(trimmed ? { instruction: trimmed } : {}),
         ref: bufferRef.current.document.ref,
@@ -168,6 +168,7 @@ export function FocusEditor({ identity, buffer, store, sessionId, bufferKey, mem
         dirty: bufferRef.current.text !== bufferRef.current.document.body || !!bufferRef.current.attempt,
         selection: { text: target.text, line: target.line, before: target.before, after: target.after },
       })
+      if (!result.ok) pushToast(result.message)
     } finally { if (asking.current === id) asking.current = null }
   }
   function accept(id: string) {
@@ -616,11 +617,11 @@ export function FocusEditor({ identity, buffer, store, sessionId, bufferKey, mem
     {bubble && <Anchored anchor={bubble} bounds={bounds} prefer="above" className="ed-float ed-bubble" role="toolbar" aria-label="选区操作" onMouseDown={event => event.preventDefault()}>
       <div className="ed-group is-agent">
         {!readOnly && <>
-          <Tool agent icon={Feather} tip="让主 Agent 润色" onClick={() => void ask('polish')} />
-          <Tool agent icon={UnfoldVertical} tip="让主 Agent 扩写" onClick={() => void ask('expand')} />
-          <Tool agent icon={FoldVertical} tip="让主 Agent 精简" onClick={() => void ask('condense')} />
+          <Tool agent icon={Feather} tip="让主控润色" onClick={() => void ask('polish')} />
+          <Tool agent icon={UnfoldVertical} tip="让主控扩写" onClick={() => void ask('expand')} />
+          <Tool agent icon={FoldVertical} tip="让主控精简" onClick={() => void ask('condense')} />
         </>}
-        <Tool agent icon={ScanEye} tip="让主 Agent 审读" onClick={() => void ask('review')} />
+        <Tool agent icon={ScanEye} tip="让主控审读" onClick={() => void ask('review')} />
         {!readOnly && <Tool agent icon={Sparkles} tip="按我的要求改 · Ctrl K" onClick={openPrompt} />}
       </div>
       <span className="ed-sep" />
@@ -632,19 +633,19 @@ export function FocusEditor({ identity, buffer, store, sessionId, bufferKey, mem
       </>}
       <Tool icon={Ellipsis} tip="更多 · 右键" onClick={() => { setPanel(null); setPrompt(null); setMenu({ x: bubble.center - 110, y: bubble.bottom + 6 }) }} />
     </Anchored>}
-    {spark && <button type="button" className="ed-spark" style={{ left: spark.left, top: spark.top }} aria-label="让主 Agent 从这里续写" data-tip="让主 Agent 从这里续写 · Ctrl K"
+    {spark && <button type="button" className="ed-spark" style={{ left: spark.left, top: spark.top }} aria-label="让主控从这里续写" data-tip="让主控从这里续写 · Ctrl K"
       onMouseDown={event => event.preventDefault()} onClick={openPrompt}><Sparkles size={14} strokeWidth={1.75} /></button>}
-    {prompt && promptAnchor && <Anchored anchor={promptAnchor} bounds={bounds} prefer="below" className="ed-float ed-prompt" role="dialog" aria-label="交给主 Agent">
+    {prompt && promptAnchor && <Anchored anchor={promptAnchor} bounds={bounds} prefer="below" className="ed-float ed-prompt" role="dialog" aria-label="交给主控">
       <Sparkles size={16} className="ed-prompt-lead" aria-hidden="true" />
-      <input autoFocus value={promptText} aria-label="给主 Agent 的要求"
-        placeholder={prompt.mode === 'continue' ? '后文想怎么走？留空直接续写' : '告诉主 Agent 怎么改这段'}
+      <input autoFocus value={promptText} aria-label="给主控的要求"
+        placeholder={prompt.mode === 'continue' ? '后文想怎么走？留空直接续写' : '告诉主控怎么改这段'}
         onChange={event => setPromptText(event.target.value)}
         onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); submitPrompt() }
           else if (event.key === 'Escape') { event.preventDefault(); setPrompt(null); viewRef.current?.focus() }
         }}
         onBlur={() => window.setTimeout(() => { if (!rootRef.current?.querySelector('.ed-prompt:focus-within')) setPrompt(null) }, 120)} />
-      <button type="button" className="ed-icon is-send" aria-label="发送给主 Agent" data-tip="发送给主 Agent · Enter"
+      <button type="button" className="ed-icon is-send" aria-label="发送给主控" data-tip="发送给主控 · Enter"
         disabled={prompt.mode === 'edit' && !promptText.trim()} onMouseDown={event => event.preventDefault()} onClick={submitPrompt}><ArrowUp size={16} /></button>
     </Anchored>}
     {openComment && commentAnchor && <Anchored anchor={commentAnchor} bounds={bounds} prefer="below" className="ed-float ed-note" role="dialog" aria-label="审读批注">
@@ -681,7 +682,7 @@ export function FocusEditor({ identity, buffer, store, sessionId, bufferKey, mem
       setPanel(null)
     }} />}
     {(pendingCount || readyCount || noteCount) ? <button type="button" className="ed-float ed-collab-pill" onMouseDown={event => event.preventDefault()} onClick={() => jump(1)}
-      aria-label="跳到下一条主 Agent 建议" data-tip={`${pendingCount ? pendingCount + ' 条处理中 ' : ''}${readyCount ? readyCount + ' 条建议待定 ' : ''}${noteCount ? noteCount + ' 条批注 ' : ''}· Alt ]`}>
+      aria-label="跳到下一条主控建议" data-tip={`${pendingCount ? pendingCount + ' 条处理中 ' : ''}${readyCount ? readyCount + ' 条建议待定 ' : ''}${noteCount ? noteCount + ' 条批注 ' : ''}· Alt ]`}>
       {pendingCount ? <span><LoaderCircle size={14} className="ed-spin" />{pendingCount}</span> : null}
       {readyCount ? <span className="is-ready"><Sparkles size={14} />{readyCount}</span> : null}
       {noteCount ? <span className="is-note"><ScanEye size={14} />{noteCount}</span> : null}

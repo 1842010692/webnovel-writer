@@ -69,3 +69,19 @@ describe('persona 注册（轻适配：不 complete，保留 dsh 原生指引段
     expect(registerPersona(undefined)).toBe(false)
   })
 })
+
+describe('persona 句长（STE）', () => {
+  it('每个编号条目不超过 2 句，每句不超过 50 字', () => {
+    const items = personaText.split('\n').filter((line) => /^\d+\. /.test(line))
+    expect(items.length).toBe(5)
+    for (const item of items) {
+      const sentences = item.replace(/^\d+\. /, '').split(/[。！？]/).map((s) => s.trim()).filter(Boolean)
+      expect(sentences.length).toBeLessThanOrEqual(2)
+      for (const sentence of sentences) expect([...sentence].length).toBeLessThanOrEqual(50)
+    }
+    for (const line of personaText.split('\n')) {
+      for (const sentence of line.split(/[。！？]/)) expect([...sentence.trim()].length).toBeLessThanOrEqual(50)
+    }
+  })
+})
+

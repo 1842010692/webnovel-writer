@@ -44,7 +44,7 @@ export function parseDocument(text: string): ReadResult<Frontmatter> {
       return { ok: false, reason: 'parse-error', detail: 'frontmatter 顶层必须是键值映射' }
     }
   } catch (err) {
-    return { ok: false, reason: 'parse-error', detail: `YAML 解析失败:${String(err)}` }
+    return { ok: false, reason: 'parse-error', detail: `YAML 解析失败：${err instanceof Error ? err.message : String(err)}` }
   }
   return { ok: true, data: { fields, body } }
 }
@@ -77,6 +77,6 @@ export const COMMON_FIELD_KEYS = [
 /** 读取结果辅助:强制区分 missing 与 parse-error(B4)。 */
 export function unwrap<T>(r: ReadResult<T>, what: string): T {
   if (r.ok) return r.data
-  if (r.reason === 'missing') throw new Error(`${what}:文件不存在(没有数据,非读取失败)`)
-  throw new Error(`${what}:解析失败——${r.detail}(B4:残缺不得当事实)`)
+  if (r.reason === 'missing') throw new Error(`${what}:文件不存在(没有数据，非读取失败)`)
+  throw new Error(`${what}：解析失败——${r.detail}。文件内容不完整，不得当作事实使用；请先修复这个文件的 frontmatter`)
 }

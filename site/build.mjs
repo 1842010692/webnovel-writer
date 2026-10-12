@@ -498,7 +498,7 @@ function renderHome(ctx, groups, guides) {
   const body = `<section class="hero">
   <div class="hero-inner">
     <div>
-      <p class="eyebrow">为长篇创作而设计</p>
+      <p class="eyebrow">为长篇创作而设计 · v${esc(ctx.version)}</p>
       <h1>DSH Scriptor</h1>
       <p class="tagline">长篇小说写作工作台</p>
       <p class="lead">从构想到定稿，陪你把一本书写完。</p>
@@ -507,7 +507,7 @@ function renderHome(ctx, groups, guides) {
         <a class="button" href="docs/beginner.html">新手教程</a>
         <a class="button ghost" href="${esc(ctx.tree)}" target="_blank" rel="noopener noreferrer">${icon.github}<span>GitHub</span></a>
       </div>
-      <div class="product-meta" aria-label="产品信息">${infoLink('docs/install.html#平台与测试范围', 'Windows：完整测试与安装验证', infoIcons.windows)}${infoLink('docs/install.html#平台与测试范围', 'Linux：已纳入自动构建和测试', infoIcons.linux)}${infoLink('docs/install.html#平台与测试范围', 'macOS：暂无测试环境，未验证不代表不支持', infoIcons.mac)}<span class="meta-divider" aria-hidden="true"></span>${infoLink('docs/privacy.html', '作品保存在本地', infoIcons.local)}${infoLink('docs/configuration.html', '自备模型 API', infoIcons.api)}${infoLink(`${ctx.repo}/blob/${ctx.branch}/LICENSE`, 'GPL-3.0-only 开源许可证', infoIcons.license)}</div>
+      <div class="product-meta" aria-label="产品信息">${infoLink('docs/install.html#平台与测试范围', 'Windows：完整测试与安装验证', infoIcons.windows)}${infoLink('docs/install.html#平台与测试范围', 'Linux：构建与测试为必需检查', infoIcons.linux)}${infoLink('docs/install.html#平台与测试范围', 'macOS：自动构建与测试为观察项', infoIcons.mac)}<span class="meta-divider" aria-hidden="true"></span>${infoLink('docs/privacy.html', '作品保存在本地', infoIcons.local)}${infoLink('docs/configuration.html', '自备模型 API', infoIcons.api)}${infoLink(`${ctx.repo}/blob/${ctx.branch}/LICENSE`, 'GPL-3.0-only 开源许可证', infoIcons.license)}</div>
     </div>
     <div class="editor-mock" aria-hidden="true">
       <div class="editor-mock-bar"><i></i><i></i><i></i><span>河埠旧事 · 退潮以前</span></div>
@@ -518,6 +518,19 @@ function renderHome(ctx, groups, guides) {
         <p>房租、水电、母亲一个人撑着的店，她一样也没提。</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="section alt" aria-labelledby="update-title">
+  <div class="section-inner">
+    <h2 id="update-title">${esc(ctx.version)} 更新</h2>
+    <div class="feature-grid feature-main">
+      <article class="feature"><h3>专用写作模式</h3><p>新建写作对话，再从原书仓继续。</p></article>
+      <article class="feature"><h3>保存后核对字数</h3><p>按实际稿件计数，对照契约篇幅。</p></article>
+      <article class="feature"><h3>记忆各有所属</h3><p>区分作者偏好与本书决定，防止重复覆盖。</p></article>
+    </div>
+    <p>本版还改进书仓锁恢复、异常写入隔离与错误提示。检索和桌宠仅同步兼容版本。</p>
+    <p class="home-links"><a href="docs/upgrade-backup.html">升级到写作模式 →</a><a href="${esc(ctx.release)}">完整更新与下载 →</a></p>
   </div>
 </section>
 
@@ -559,6 +572,7 @@ function renderHome(ctx, groups, guides) {
 <section class="section" aria-labelledby="editor-title">
   <div class="section-inner">
     <h2 id="editor-title">在编辑器里改稿</h2>
+    <p>先选择写作模式，再发起 AI 改稿或审读。采纳建议后仍需保存。截图展示 8.2.0 已有的编辑器操作。</p>
     <div class="gallery" data-gallery>
       <div class="gallery-tabs" role="tablist" aria-label="编辑器界面">
         ${shots.map(([id, label], index) => `<button type="button" role="tab" id="tab-${id}" aria-controls="panel-${id}" aria-selected="${index === 0 ? 'true' : 'false'}" data-tab="${id}">${esc(label)}</button>`).join('')}
@@ -594,7 +608,7 @@ function renderHome(ctx, groups, guides) {
     <ol class="steps">
       <li><h3>安装客户端</h3><p>前往 <a href="${esc(ctx.dshWebsite)}" target="_blank" rel="noopener noreferrer">DeepSeek Harness 官网</a>，安装配套的 <strong>${esc(ctx.dsh)}</strong>，打开 <strong>插件 → 添加插件</strong>。</p></li>
       <li><h3>安装插件</h3><p>粘贴下面的标识，核对预览后安装，按提示应用变更：</p>${copyable(ctx.pkg('dsh-scriptor'))}</li>
-      <li><h3>开始第一本书</h3><p>配置聊天模型与凭据，选择作品工作区，按 <a href="docs/first-book.html">第一本书与第一章</a> 开始。</p></li>
+      <li><h3>选择写作模式</h3><p>配置聊天模型与凭据，新建对话并选择<strong>写作模式</strong>。打开作品工作区，按 <a href="docs/first-book.html">第一本书与第一章</a> 开始。</p></li>
     </ol>
     <div class="table-wrap"><table class="plugin-table">
       <thead><tr><th>插件</th><th>安装标识</th><th>用途</th></tr></thead>
@@ -645,10 +659,58 @@ function copyFile(from, out, relative) {
   fs.copyFileSync(from, file)
 }
 
+function absolutePath(input) {
+  if (process.platform === 'win32') {
+    if (input.startsWith('\\\\?\\UNC\\')) input = `\\\\${input.slice(8)}`
+    else if (input.startsWith('\\\\?\\')) input = input.slice(4)
+  }
+  return path.resolve(input)
+}
+
+/** Resolve links even when the output's final directories do not exist yet. */
+function physicalPath(input) {
+  let current = absolutePath(input)
+  const tail = []
+  for (;;) {
+    try { return path.join(absolutePath(fs.realpathSync.native(current)), ...tail) } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+      // A dangling link exists, but cannot safely identify an output location.
+      try {
+        fs.lstatSync(current)
+        throw new Error(`Unsafe Pages output: unresolved path ${current}`)
+      } catch (probeError) { if (probeError.code !== 'ENOENT') throw probeError }
+      const parent = path.dirname(current)
+      if (parent === current) throw error
+      tail.unshift(path.basename(current))
+      current = parent
+    }
+  }
+}
+
+function containsPath(parent, child, strict = false) {
+  const identity = value => process.platform === 'win32' ? value.toLowerCase() : value
+  const relative = path.relative(identity(parent), identity(child))
+  return (!strict || relative !== '') && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+function safeOutput(root, out) {
+  const physical = physicalPath(out)
+  // Protect both supplied inputs and this module's own site/assets resources.
+  for (const repository of new Set([root, defaultRoot])) {
+    for (const base of new Set([absolutePath(repository), physicalPath(repository)])) {
+      for (const target of new Set([absolutePath(out), physical])) {
+        const allowed = !containsPath(target, base)
+          && (!containsPath(base, target) || containsPath(path.join(base, '.tmp'), target, true))
+        assert.ok(allowed, `Unsafe Pages output: ${out}; use a dedicated .tmp subdirectory or an independent output directory`)
+      }
+    }
+  }
+  return physical
+}
+
 export function buildSite({ root = defaultRoot, out = defaultOut } = {}) {
-  root = path.resolve(root)
-  out = path.resolve(out)
-  assert.ok(out !== root && !root.startsWith(out + path.sep), 'Output directory must not contain the repository')
+  root = absolutePath(root)
+  out = safeOutput(root, out)
   const ctx = readContext(root)
   const md = createMarkdown(root)
   const names = fs.readdirSync(path.join(root, GUIDES)).filter(file => file.endsWith('.md')).map(file => file.slice(0, -3)).sort()
@@ -659,6 +721,8 @@ export function buildSite({ root = defaultRoot, out = defaultOut } = {}) {
   const warnings = []
   for (const guide of guides.values()) rewriteLinks(guide, guides, ctx, root, assets, warnings)
 
+  // Recheck after reading inputs, then remove exactly the validated location.
+  assert.equal(safeOutput(root, out), out, 'Unsafe Pages output: location changed during build')
   fs.rmSync(out, { recursive: true, force: true })
   fs.mkdirSync(out, { recursive: true })
   for (const guide of guides.values()) writeFile(out, `docs/${guide.name}.html`, renderGuide(md, ctx, guide, groups, guides, order))

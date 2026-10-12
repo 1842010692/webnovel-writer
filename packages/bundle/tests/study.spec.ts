@@ -184,6 +184,31 @@ describe('已通过宿主认证的书房 Fetch 保存和原生通知入口', () 
     expect(JSON.stringify(followup.mock.calls.at(-1))).toContain('原文')
     expect(JSON.stringify(followup.mock.calls.at(-1))).toContain('作者更改')
   })
+  it('普通会话只保存，不发送写作通知，并拒绝 AI 写作', async () => {
+    const followup = vi.fn()
+    const agent = { id: 'main', status: 'idle' as string, session: { header: { cwd: root } }, followup }
+    const runtime: StudyWebRuntime = { agents: { get: () => agent, roots: () => [agent] } }
+    const handler = createStudyHandler(runtime, undefined, undefined, new EditorRequestHub(), () => false)
+    const post = async (method: string, input: object) => {
+      const response = await handler(new Request('http://127.0.0.1' + STUDY_API_PATH + method, {
+        method: 'POST',
+        headers: { 'x-webnovel-request': '1', 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId: 'main', ...input }),
+      }))
+      return { status: response.status, body: await response.json() as { ok: boolean; error?: string; value?: { notification?: string } } }
+    }
+    const ref = { space: 'book:fog', path: '草稿区/草稿/卷01-开篇/稿1.md' }
+    const doc = new StudyService(root).read(ref)
+    const asked = await post('ask', askInput(doc))
+    expect(asked.body.ok).toBe(false)
+    expect(asked.body.error).toContain('写作模式')
+    const contract = { space: 'book:fog', path: '作品契约/契约.md' }
+    const contractDoc = new StudyService(root).read(contract)
+    const saved = await post('save', { ref: contract, hash: contractDoc.hash, body: contractDoc.body.trimEnd() + '。\n', operationId: 'http-operation-003' })
+    expect(saved.body.value?.notification).toBe('not-required')
+    expect(new StudyService(root).read(contract).body).toContain('。')
+    expect(followup).not.toHaveBeenCalled()
+  })
 })
 
 function askInput(doc: { hash: string; ref: { space: string; path: string } }, extra: Record<string, unknown> = {}) {
@@ -243,7 +268,7 @@ describe('书房编辑器请求', () => {
     const doc = new StudyService(root).read({ space: 'book:fog', path: '草稿区/草稿/卷01-开篇/稿1.md' })
     const failed = await post('ask', askInput(doc))
     expect(failed.status).toBe(400)
-    expect(failed.body.error).toContain('主 Agent 没有收到请求')
+    expect(failed.body.error).toContain('主控没有收到请求')
     expect(editorRequests.view(agent, ['polish1']).items[0]?.state).toBe('unknown')
     followup.mockImplementation(() => undefined)
     expect((await post('ask', askInput(doc))).status).toBe(200)
@@ -343,7 +368,7 @@ describe('书房编辑器请求', () => {
     const saved = await post('save', { ref, hash: doc.hash, body: '作者改过的资料。', operationId: 'editor-save-0001', accepted })
     expect(saved.body.value.notification).toBe('failed')
     const first = JSON.stringify(followup.mock.calls[0])
-    expect(first).toContain('本次改动含 1 处作者在编辑器中采纳的主 Agent 建议（#kept01）')
+    expect(first).toContain('本次改动含 1 处作者在编辑器中采纳的主控建议（#kept01）')
     expect(first).not.toContain('cmt001')
     expect(first).not.toContain('ins001')
     expect(first).not.toContain('other1')
@@ -351,7 +376,7 @@ describe('书房编辑器请求', () => {
     const retried = await post('notify', { ref, hash: saved.body.value.document.hash, operationId: saved.body.value.operationId, accepted })
     expect(retried.body.value.notification).toBe('delivered')
     const second = JSON.stringify(followup.mock.calls[1])
-    expect(second).toContain('本次改动含 1 处作者在编辑器中采纳的主 Agent 建议（#kept01）')
+    expect(second).toContain('本次改动含 1 处作者在编辑器中采纳的主控建议（#kept01）')
     expect(second).not.toContain('forged1')
     expect((await post('notify', { ref, hash: saved.body.value.document.hash, operationId: saved.body.value.operationId, accepted: ['forged1'] })).body.value.notification).toBe('delivered')
     expect(followup).toHaveBeenCalledTimes(2)
@@ -398,7 +423,7 @@ describe('书房编辑器请求', () => {
     })
     expect(second.status).toBe(200)
     const secondNotice = JSON.stringify(followup.mock.calls.at(-1))
-    expect(secondNotice).toContain('作者在编辑器中采纳的主 Agent 建议（#move02）')
+    expect(secondNotice).toContain('作者在编辑器中采纳的主控建议（#move02）')
     expect(secondNotice).not.toContain('#stay01')
     expect(secondNotice).not.toContain('#else01')
     expect(secondNotice).not.toContain('#forged1')

@@ -1,3 +1,4 @@
+import { createPresetAgent } from './preset-agents.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -43,7 +44,7 @@ export async function checkMemoryCatalog({ host, ctx, workspace, book, service, 
   await check('记忆目录会话开始快照与选书目录', async () => {
     entry(authorDir, '冷开场', { 名称: '冷开场', 描述: '作者偏好 {{冷开场}} 直接入戏', 类: '文风', 标签: '[测试书]', 来源: '对谈', 生成模块: '模型' }, '正文不得进目录。')
     index(authorDir, '作者记忆索引', [['冷开场', '作者偏好 {{冷开场}} 直接入戏']])
-    const created = await service('agents').create({ sessionId: 'loader-memory', meta: { cwd: workspace }, agentOptions })
+    const created = await createPresetAgent(service('agents'), { sessionId: 'loader-memory', meta: { cwd: workspace }, agentOptions })
     const agent = created.agent
     try {
       const first = await memoryText(agent)
@@ -53,13 +54,24 @@ export async function checkMemoryCatalog({ host, ctx, workspace, book, service, 
       assert.match(text, /- 冷开场 — 作者偏好 \{\{冷开场\}\} 直接入戏｜类：文风/)
       assert.ok(text.includes(path.join(authorDir, '索引.md')), text)
       assert.doesNotMatch(text, /正文不得进目录/)
-      const delegated = await service('agents').create({ parentAgent: agent, sessionId: 'loader-memory-child', meta: { cwd: workspace }, agentOptions })
+      const delegated = await createPresetAgent(service('agents'), { parentAgent: agent, sessionId: 'loader-memory-child', meta: { cwd: workspace }, agentOptions })
       try { await memoryText(delegated.agent, 0) } finally { await delegated.dispose() }
       // 本轮新增记忆：同一 agent 的快照不变；普通查询与记忆写入都不改目录
       entry(authorDir, '后来才写', { 名称: '后来才写', 描述: '会话中途新增', 类: '决策', 标签: '[测试书]', 来源: '对谈', 生成模块: '模型' }, 'x')
       index(authorDir, '作者记忆索引', [['冷开场', '作者偏好 {{冷开场}} 直接入戏'], ['后来才写', '会话中途新增']])
-      const recorded = await withTurn(agent, () => execute(agent, 'novel_record_memory', { bookId: 'loader-book', 名称: '工具写入', 描述: '经工具写入的条目', 类: '决策', 标签: ['测试书'], 来源: '对谈', 正文: 'x' }))
+      const recorded = await withTurn(agent, () => execute(agent, 'novel_record_memory', { scope: 'author', 操作: '新增', 名称: '工具写入', 描述: '经工具写入的条目', 类: '决策', 标签: ['通用'], 来源: '对谈', 正文: '以后先说明依据，再给建议。' }))
       assert.equal(recorded.value.ok, true, JSON.stringify(recorded))
+      const bookArgs = { scope: 'book', 操作: '新增', bookId: 'loader-book', 名称: '本书选择', 描述: '只适用于当前书的取舍理由', 类: '决策', 来源: '对谈', 正文: '为了保持悬念，暂不披露来信人。' }
+      const bookRecorded = await withTurn(agent, () => execute(agent, 'novel_record_memory', bookArgs))
+      assert.equal(bookRecorded.value.ok, true, JSON.stringify(bookRecorded))
+      assert.equal(bookRecorded.value.scope, 'book')
+      assert.equal(bookRecorded.value.changed, true)
+      assert.equal(fs.existsSync(path.join(book, '本书记忆/本书选择.md')), true)
+      assert.equal(fs.existsSync(path.join(authorDir, '本书选择.md')), false)
+      const bookRepeated = await withTurn(agent, () => execute(agent, 'novel_record_memory', bookArgs))
+      assert.equal(bookRepeated.value.changed, false)
+      const invalid = await withTurn(agent, () => execute(agent, 'novel_record_memory', { ...bookArgs, scope: 'author' }))
+      assert.equal(invalid.value.ok, false)
       const again = await memoryText(agent)
       assert.equal(again.rendered[0].text, text)
       assert.doesNotMatch(text, /后来才写|工具写入/)
@@ -77,7 +89,7 @@ export async function checkMemoryCatalog({ host, ctx, workspace, book, service, 
       assert.equal(status.value.记忆目录, undefined)
       assert.equal((await memoryText(agent)).rendered[0].text, text)
       // 新会话：重新取得初始目录，含中途新增的条目
-      const fresh = await service('agents').create({ sessionId: 'loader-memory-fresh', meta: { cwd: workspace }, agentOptions })
+      const fresh = await createPresetAgent(service('agents'), { sessionId: 'loader-memory-fresh', meta: { cwd: workspace }, agentOptions })
       try {
         const freshText = (await memoryText(fresh.agent)).rendered[0].text
         assert.match(freshText, /- 后来才写 — 会话中途新增/)

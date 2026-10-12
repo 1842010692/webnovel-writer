@@ -38,14 +38,14 @@ function resolveGitDir(root: string): string | undefined {
 export function checkGitHealth(bookRoot: string): GitHealth {
   const root = path.resolve(bookRoot)
   if (/OneDrive|坚果云/i.test(root)) {
-    return { ok: false, reason: '书仓位于网盘同步目录,拒绝提交(B6)' }
+    return { ok: false, reason: '书仓位于网盘同步目录，拒绝提交。请作者把书仓移到不同步的本地目录' }
   }
   const gitDir = resolveGitDir(root)
-  if (gitDir === undefined) return { ok: false, reason: '书仓尚未初始化版本库,无法提交(B6)' }
-  if (exists(path.join(gitDir, 'MERGE_HEAD'))) return { ok: false, reason: '正在合并,拒绝提交以免半提交(B6)' }
+  if (gitDir === undefined) return { ok: false, reason: '书仓尚未初始化版本库，无法提交。请作者在书仓目录运行 git init' }
+  if (exists(path.join(gitDir, 'MERGE_HEAD'))) return { ok: false, reason: '书仓正在 Git 合并，拒绝提交以免半提交。请作者先完成或放弃这次合并' }
   if (exists(path.join(gitDir, 'rebase-merge')) || exists(path.join(gitDir, 'rebase-apply'))) {
-    return { ok: false, reason: '正在变基,拒绝提交以免半提交(B6)' }
+    return { ok: false, reason: '书仓正在 Git 变基，拒绝提交以免半提交。请作者先完成或放弃这次变基' }
   }
-  if (exists(path.join(gitDir, 'index.lock'))) return { ok: false, reason: '版本库锁定中,拒绝提交(B6)' }
+  if (exists(path.join(gitDir, 'index.lock'))) return { ok: false, reason: '版本库锁定中（存在 .git/index.lock），拒绝提交。请等其他 Git 操作结束后重试；没有其他 Git 操作时，请作者删除这个文件' }
   return { ok: true }
 }

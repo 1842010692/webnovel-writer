@@ -224,37 +224,49 @@ describe('运行链路接线(工具面验收)', () => {
     expect(reset.message).toContain('上一轮已给处置 1 条暂存待继承')
   })
 
-  it('novel_record_memory 落书房,不进书仓 git;索引与条目一致', async () => {
+  it('单书决定落本书记忆并提交，作者偏好独立保存；进度读取本书处置', async () => {
     const ws = mkWs()
     const { call } = makeTools(ws)
     const { bookId } = await makeBook(ws, call)
     const bookRoot = path.join(ws, '链路书')
 
     const r = await call('novel_record_memory', {
-      bookId, 名称: '反派动机-折剑人', 描述: '作者拍板:折剑人毁剑是为阻止剑灾', 类: '决策',
+      scope: 'book', 操作: '新增', bookId, 名称: '反派动机-折剑人', 描述: '作者拍板:折剑人毁剑是为阻止剑灾', 类: '决策',
       标签: ['链路书', '卷01', '人物动机'], 来源: '对谈', 正文: '[[主角]] 与折剑人的冲突根源。',
     })
     expect(r.ok).toBe(true)
-    const entry = path.join(ws, '书房/作者记忆/反派动机-折剑人.md')
+    const entry = path.join(bookRoot, '本书记忆/反派动机-折剑人.md')
     expect(fs.existsSync(entry)).toBe(true)
-    const index = fs.readFileSync(path.join(ws, '书房/作者记忆/索引.md'), 'utf-8')
+    const index = fs.readFileSync(path.join(bookRoot, '本书记忆/索引.md'), 'utf-8')
     expect(index).toContain('反派动机-折剑人')
     expect(index).toContain('作者拍板:折剑人毁剑是为阻止剑灾')
+    expect(fs.existsSync(path.join(ws, '书房/作者记忆/反派动机-折剑人.md'))).toBe(false)
+    expect(git(bookRoot, ['ls-files']).stdout).toContain('本书记忆/反派动机-折剑人.md')
+    expect(await call('novel_record_memory', { scope: 'author', 操作: '新增', 名称: '合作习惯', 描述: '跨书通用的建议方式', 类: '对话', 来源: '作者明确要求', 正文: '先给具体建议。' })).toMatchObject({ ok: true, scope: 'author' })
+    expect(fs.existsSync(path.join(ws, '书房/作者记忆/合作习惯.md'))).toBe(true)
     // 作者层资产不在书仓工作树状态中
     const status = git(bookRoot, ['status', '--porcelain']).stdout ?? ''
     expect(status).not.toContain('书房')
     expect(git(bookRoot, ['ls-files']).stdout ?? '').not.toContain('作者记忆')
 
-    // 进度卡:未决偏离 = 对账偏离 − 作者层已处置(拍板 4)
+    // 进度卡：当前书的处置生效。
     const progress1 = await call('novel_get_book_progress', { bookId })
     expect(progress1.ok).toBe(true)
     const before = (progress1.未决偏离 as string[]).length
     expect(before).toBeGreaterThan(0)
     const devName = (progress1.未决偏离 as string[])[0]!
-    await call('novel_record_memory', {
-      bookId, 名称: `偏离处置-${devName}`, 描述: `作者接受偏离:${devName}`, 类: '决策',
+    // 旧作者记录先独立消项，再用本书同名结论使其失效，最后明确更新为新处置。
+    const decisionName = '偏离处置决定'
+    const legacy = path.join(ws, '书房/作者记忆', `${decisionName}.md`)
+    fs.writeFileSync(legacy, serializeDocument({ 名称: decisionName, 描述: '早期处置', 类: '决策', 标签: [bookId], 来源: '对谈' }, `接受 ${devName}`))
+    expect((await call('novel_get_book_progress', { bookId })).未决偏离).not.toContain(devName)
+    expect(await call('novel_record_memory', { scope: 'book', 操作: '新增', bookId, 名称: decisionName, 描述: '早期决定已撤销', 类: '决策', 来源: '作者确认', 正文: '此前处置已失效，重新核对。' })).toMatchObject({ ok: true })
+    expect((await call('novel_get_book_progress', { bookId })).未决偏离).toContain(devName)
+    const originalDecision = fs.readFileSync(path.join(bookRoot, '本书记忆', `${decisionName}.md`), 'utf8')
+    expect(await call('novel_record_memory', {
+      scope: 'book', 操作: '更新', 原文: originalDecision, bookId, 名称: decisionName, 描述: `作者接受偏离:${devName}`, 类: '决策',
       标签: ['链路书', '卷01'], 来源: '对谈', 正文: `偏离项「${devName}」处置:接受偏离,不改后续计划。`,
-    })
+    })).toMatchObject({ ok: true, changed: true })
     const progress2 = await call('novel_get_book_progress', { bookId }) as { ok: boolean; 未决偏离: string[] }
     expect(progress2.ok).toBe(true)
     expect(progress2.未决偏离).not.toContain(devName)

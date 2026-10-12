@@ -21,6 +21,8 @@ export interface MemoryCatalogEntry {
   readonly 描述?: string
   readonly 类?: string
   readonly 来源?: string
+  readonly 标签?: readonly string[]
+  readonly 范围待核对?: true
   /** 相对目录根的条目文件位置。 */
   readonly 全文位置: string
   /** 旧格式（一类一文件）文件标「旧」，整文件即一条定位。 */
@@ -103,6 +105,8 @@ function scanDir(root: string, relDir: string, owner: MemoryCatalogOwner): ScanR
       ...(描述 === undefined ? {} : { 描述 }),
       ...(类 === undefined ? {} : { 类 }),
       ...(来源 === undefined ? {} : { 来源 }),
+      ...(Array.isArray(fields['标签']) ? { 标签: fields['标签'].map(String) } : {}),
+      ...(owner === '作者' && fields['适用范围'] !== '作者' ? { 范围待核对: true as const } : {}),
       全文位置: rel,
     })
   }
@@ -166,6 +170,8 @@ function entryLine(entry: MemoryCatalogEntry): string {
   const tags: string[] = []
   if (entry.类 !== undefined) tags.push(`类：${entry.类}`)
   if (entry.来源 !== undefined && entry.来源 !== '') tags.push(`来源：${entry.来源}`)
+  if (entry.标签?.length) tags.push(`标签：${entry.标签.join('、')}`)
+  if (entry.范围待核对) tags.push('旧条目，适用范围待核对')
   tags.push(`文件：${entry.全文位置}`)
   return `- ${entry.名称} — ${entry.描述 ?? '（缺描述）'}｜${tags.join('｜')}`
 }
@@ -188,5 +194,6 @@ export function renderMemoryCatalog(catalog: MemoryCatalog, 时点: string): str
     for (const entry of catalog.条目) lines.push(entryLine(entry))
   }
   lines.push('要用某条记忆时，先读最新索引核对名称与文件，再读该条全文；召回的记忆是背景，提到的东西先核实还在不在。')
+  if (catalog.条目.some(entry => entry.范围待核对)) lines.push('旧作者条目可能只适用于某一本书；按标签和原文核对，不推广到其他作品。')
   return lines.join('\n')
 }

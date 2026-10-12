@@ -74,6 +74,12 @@ Shared DSH/React peers are provided by the host and are not included in this bun
 
 The release includes source materials and a manifest for these bundled components. Build from the corresponding public source tag with the lockfile.
 
+## DSH writing preset basis
+
+The writing preset is adapted from the DSH 0.2.0-rc.2 standard preset (MIT).
+Copyright (c) 2026 DeepSeek. [Original notice](licenses/dsh-preset.txt).
+Source: https://github.com/deepseek-ai/deepseek-harness/tree/639ed015397290b3745d163aafe02ffee4aa3f84/packages/bundle/web-app/presets
+
 ## Archify artwork
 
 Writing workflow geometry and semantic styling derive from Archify 3.0.1 (MIT).

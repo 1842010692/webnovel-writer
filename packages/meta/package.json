@@ -1,6 +1,6 @@
 {
   "name": "@linfengqaqtat/dsh-scriptor-full",
-  "version": "8.2.0",
+  "version": "8.2.1",
   "description": "网文写作工作台完整版（含可选嵌入提供方）",
   "keywords": [
     "dsh-plugin",
@@ -23,14 +23,18 @@
   "license": "GPL-3.0-only",
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/writing.patch.yml"
+      ]
     }
   },
   "files": [
     "cordis.patch.yml",
     "README.md",
     "RELEASE_NOTES.md",
-    "LICENSE"
+    "LICENSE",
+    "presets/*.yml"
   ],
   "author": "lingfengQAQ",
   "dependencies": {

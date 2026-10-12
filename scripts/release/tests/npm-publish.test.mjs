@@ -81,8 +81,9 @@ async function fixture(callback) {
     }
     if (index === 2) {
       manifest.dependencies = { '@linfengqaqtat/dsh-scriptor': version, '@linfengqaqtat/dsh-scriptor-retrieval': version }
-      manifest.dsh = { bundle: { patch: './cordis.patch.yml' } }
+      manifest.dsh = { bundle: { patch: ['./cordis.patch.yml', './presets/writing.patch.yml'] } }
       files['cordis.patch.yml'] = fs.readFileSync(path.join(root, 'packages/meta/cordis.patch.yml'), 'utf8')
+      files['presets/writing.patch.yml'] = fs.readFileSync(path.join(root, 'packages/meta/presets/writing.patch.yml'), 'utf8')
     }
     if (index === 3) {
       manifest.dsh = { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } }

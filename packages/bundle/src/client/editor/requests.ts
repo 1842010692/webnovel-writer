@@ -58,7 +58,7 @@ function failureMessage(error: unknown): string {
     if (error.code === 'conflict' || error.message.includes('磁盘版本已变化')) return '先处理磁盘版本冲突'
     return error.message
   }
-  return error instanceof Error && error.message ? error.message : '主 Agent 没有收到请求'
+  return error instanceof Error && error.message ? error.message : '主控没有收到请求'
 }
 
 function isReply(value: unknown): value is EditorReply {
@@ -435,7 +435,7 @@ export class EditorRequests {
     }
     if (item.state === 'unanswered') {
       this.write(watch, { effects: removeItems.of([item.requestId]) })
-      this.notify(watch.identity, '主 Agent 没有交回修改，见对话')
+      this.notify(watch.identity, '主控没有交回修改，见对话')
       this.settle(item.requestId)
       return
     }

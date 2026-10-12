@@ -70,6 +70,51 @@ function crash(value: string, mode: string, count: number, files = ops): void {
 }
 
 describe('real process interruption', () => {
+  it('迟到的回收者不能删除继任者的锁目录', async () => {
+    const value = root()
+    const mutex = path.join(value, '.webnovel/writer.lock')
+    fs.mkdirSync(mutex, { recursive: true })
+    fs.writeFileSync(path.join(mutex, 'owner-dead.json'), JSON.stringify({ pid: 2147483646, hostname: os.hostname() }))
+    const source = `
+      import fs from 'node:fs'; import path from 'node:path'; import { syncBuiltinESMExports } from 'node:module';
+      const [url, root, actor] = process.argv.slice(1);
+      const wait = name => { const end=Date.now()+8000; while(!fs.existsSync(path.join(root,name))) { if(Date.now()>end) throw new Error('timeout '+name); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,5); } };
+      const unlink = fs.unlinkSync; let hooked=false;
+      fs.unlinkSync = function(file) {
+        if(actor==='A' && !hooked && String(file).endsWith('owner-dead.json')) {
+          hooked=true; fs.writeFileSync(path.join(root,'checked-A'),''); wait('entered-B');
+        }
+        return unlink.apply(this,arguments);
+      };
+      syncBuiltinESMExports(); const {withBookWrite}=await import(url);
+      withBookWrite(root,()=>{
+        fs.writeFileSync(path.join(root,'exclusive'),'',{flag:'wx'});
+        fs.writeFileSync(path.join(root,'entered-'+actor),'');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,300);
+        fs.unlinkSync(path.join(root,'exclusive'));
+      });
+    `
+    const spawnActor = (actor: string) => {
+      const child = spawn(process.execPath, ['--input-type=module', '-e', source, moduleUrl, value, actor], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      let error = ''; child.stderr.on('data', chunk => { error += chunk })
+      return { child, done: new Promise<void>((resolve, reject) => child.on('exit', code => code === 0 ? resolve() : reject(new Error(error)))) }
+    }
+    const a = spawnActor('A')
+    let b: ReturnType<typeof spawnActor> | undefined
+    try {
+      const end = Date.now() + 8000
+      while (!fs.existsSync(path.join(value, 'checked-A'))) {
+        if (Date.now() > end) throw new Error('A did not reach stale-owner cleanup')
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      b = spawnActor('B')
+      await Promise.all([a.done, b.done])
+      expect(fs.existsSync(path.join(value, 'entered-A'))).toBe(true)
+      expect(fs.existsSync(path.join(value, 'entered-B'))).toBe(true)
+      expect(fs.existsSync(mutex)).toBe(false)
+    } finally { a.child.kill(); b?.child.kill() }
+  })
+
   it.each([1, 2, 3])('recovers before a writer reads after target rename %s', (count) => {
     const value = fixture()
     crash(value, 'rename', count)
@@ -101,9 +146,14 @@ describe('real process interruption', () => {
     expect(() => withBookWrite(value, () => 'unreachable')).toThrow(/恢复冲突/)
     expect(fs.readFileSync(path.join(value, '正文/a.md'), 'utf8')).toBe('new-a')
     expect(fs.readFileSync(path.join(value, '正文/b.md'), 'utf8')).toBe('author-edit')
-    const tx = path.join(value, '.webnovel/transactions', fs.readdirSync(path.join(value, '.webnovel/transactions'))[0]!)
-    expect(fs.existsSync(path.join(tx, 'manifest.json'))).toBe(true)
-    expect(fs.readFileSync(path.join(tx, 'backups/0.bak'), 'utf8')).toBe('old-a')
+    expect(fs.readdirSync(path.join(value, '.webnovel/transactions'))).toEqual([])
+    const tx = path.join(value, '.webnovel/quarantine', fs.readdirSync(path.join(value, '.webnovel/quarantine'))[0]!)
+    expect(fs.existsSync(path.join(tx, 'transaction/manifest.json'))).toBe(true)
+    expect(fs.readFileSync(path.join(tx, 'transaction/backups/0.bak'), 'utf8')).toBe('old-a')
+    // Conflicting targets stay blocked; unrelated files remain writable.
+    expect(() => writeBatchAtomic(value, [{ relPath: '正文/a.md', content: 'later' }])).toThrow(/已隔离的冲突事务/)
+    writeBatchAtomic(value, [{ relPath: '正文/other.md', content: 'ok' }])
+    expect(fs.readFileSync(path.join(value, '正文/other.md'), 'utf8')).toBe('ok')
   })
 
   it('public contract writer recovers its input before merging an update', () => {

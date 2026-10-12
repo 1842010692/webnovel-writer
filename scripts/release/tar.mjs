@@ -92,12 +92,13 @@ export function checkMetaPackage(filename, expectedVersion, embeddingVersion) {
     '@linfengqaqtat/dsh-scriptor': expectedVersion,
     '@linfengqaqtat/dsh-scriptor-retrieval': embeddingVersion,
   })
-  assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
+  assert.deepEqual(manifest.dsh?.bundle?.patch, ['./cordis.patch.yml', './presets/writing.patch.yml'])
   assert.equal(read('cordis.patch.yml').replaceAll('\r\n', '\n').trim(),
     "- insert:\n    - id: webnovel\n      name: '@linfengqaqtat/dsh-scriptor'\n    - id: webnovel-embeddings\n      name: '@linfengqaqtat/dsh-scriptor-retrieval'\n    - id: webnovel-scenes\n      name: '@linfengqaqtat/dsh-scriptor-retrieval/scenes'\n    - id: webnovel-reranking\n      name: '@linfengqaqtat/dsh-scriptor-retrieval/reranking'")
+  assert.match(read('presets/writing.patch.yml'), /id: preset-scriptor[\s\S]*name: 写作模式/)
   assert.ok(read('LICENSE').includes('GNU GENERAL PUBLIC LICENSE'))
   read('README.md')
-  for (const file of files.keys()) assert.match(file, /^(package\.json|LICENSE|README\.md|RELEASE_NOTES\.md|cordis\.patch\.yml)$/)
+  for (const file of files.keys()) assert.match(file, /^(package\.json|LICENSE|README\.md|RELEASE_NOTES\.md|cordis\.patch\.yml|presets\/writing\.patch\.yml)$/)
   return { ok: true, files: files.size, version: manifest.version }
 }
 

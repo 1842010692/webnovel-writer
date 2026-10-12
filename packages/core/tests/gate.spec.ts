@@ -47,7 +47,7 @@ describe('文件门禁(不变量 4/5)', () => {
     const root = mkBook()
     const d = decidePreExecute(root, write(path.join(root, '大纲/故事骨架.md')))
     expect(d.kind).toBe('deny')
-    if (d.kind === 'deny') expect(d.reason).toMatch(/真源区.*文件工具不得改写/)
+    if (d.kind === 'deny') expect(d.reason).toMatch(/真源区.*文件工具不得改写.*novel_update_skeleton/)
   })
 
   it('路径逃逸拒绝', () => {

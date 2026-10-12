@@ -57,7 +57,7 @@ export function createReferenceTools(deps: Deps): NovelToolDefinition[] {
     return workspace
   }
   const host = (exec?: ToolExecContext) => {
-    if (!deps.referenceHost || !exec?.agent) throw new ReferenceError('host-unavailable', '当前会话的文件或模型宿主能力不可用')
+    if (!deps.referenceHost || !exec?.agent) throw new ReferenceError('host-unavailable', '当前会话的 DSH 文件或模型能力不可用')
     return { runtime: deps.referenceHost, agent: exec.agent }
   }
   const wrap = (operation: (args: Record<string, unknown>, exec?: ToolExecContext) => unknown | Promise<unknown>): NovelToolDefinition['execute'] => async (args, exec) => {
@@ -113,7 +113,7 @@ export function createReferenceTools(deps: Deps): NovelToolDefinition[] {
         if (args.action === 'run') return runReference(workspace, sourceId, String(args.planId), runner, args.allowProcessing === true, exec?.signal)
         throw new ReferenceError('invalid-action', '未知拆书操作')
       }) },
-    { name: REFERENCE_TOOL_NAMES[2], description: '本地文字/标签检索，区分作者点子与有据参考机制；失效结果不混入机制。只在作者明确要求核对某证据时使用 evidence，且核对当前服务允许范围；短原文将进入主对话。无向量化或额外服务请求。',
+    { name: REFERENCE_TOOL_NAMES[2], description: '本地文字/标签检索，区分作者点子与有据参考机制；失效结果不混入机制。只在作者明确要求核对某证据时使用 evidence，且核对当前服务允许范围；短原文将进入主会话。无向量化或额外服务请求。',
       parameters: { oneOf: [variant('search', { query: { type: 'string' }, sourceId: string, tags, type: string }, ['query']), variant('evidence', { ...source, evidenceId: string, allowInChat: { type: 'boolean', const: true } })] }, output,
       execute: wrap(async (args, exec) => {
         const workspace = context(exec)

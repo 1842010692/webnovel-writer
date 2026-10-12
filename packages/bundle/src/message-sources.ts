@@ -4,12 +4,14 @@ import type { ContextFormed, MessageSource } from '@deepseek-ai/dsh-llm'
 export const MEMORY_CATALOG_SOURCE = 'plugin:webnovel-memory-catalog'
 export const AUTHOR_SAVE_SOURCE = 'plugin:webnovel'
 export const EDITOR_REQUEST_SOURCE = 'plugin:webnovel-editor'
+export const DRAFT_LENGTH_SOURCE = 'plugin:webnovel-draft-length'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'plugin:webnovel-memory-catalog': { kind: typeof MEMORY_CATALOG_SOURCE } & ContextFormed
     'plugin:webnovel': { kind: typeof AUTHOR_SAVE_SOURCE }
     'plugin:webnovel-editor': { kind: typeof EDITOR_REQUEST_SOURCE; requestId: string }
+    'plugin:webnovel-draft-length': { kind: typeof DRAFT_LENGTH_SOURCE }
   }
 }
 

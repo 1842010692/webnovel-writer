@@ -6,9 +6,12 @@
 function sysPromptOf(ctx: Context): SystemPromptLike | undefined {
   const get = (ctx as unknown as { get?: (n: string) => unknown }).get
   if (typeof get === 'function') {
-    try { return get.call(ctx, 'systemPrompt') as SystemPromptLike | undefined } catch { return undefined }
+    try {
+      const value = get.call(ctx, 'systemPrompt') as SystemPromptLike | undefined
+      if (value !== undefined) return value
+    } catch { /* 未注入时改走属性。 */ }
   }
-  return (ctx as unknown as { systemPrompt?: SystemPromptLike }).systemPrompt
+  try { return (ctx as unknown as { systemPrompt?: SystemPromptLike }).systemPrompt } catch { return undefined }
 }
 
 /** 书架事实随请求现算；选书与近况由普通工具回复进入宿主对话。 */

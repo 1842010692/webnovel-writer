@@ -13,8 +13,11 @@ test('both Windows runtimes keep complete, disjoint test shards and required pol
   const ci = workflow('v8-ci')
   assert.deepEqual(ci.jobs.quality.strategy.matrix.node, ['22.19.0', '24.15.0'])
   assert.deepEqual(ci.jobs.quality.strategy.matrix.shard, [1, 2])
-  assert.deepEqual(ci.jobs.required.needs, ['policy', 'quality'])
-  for (const job of [ci.jobs.policy, ci.jobs.quality]) assert.notEqual(job['continue-on-error'], true)
+  assert.deepEqual(ci.jobs.required.needs, ['policy', 'quality', 'portability'])
+  assert.equal(ci.jobs.portability['runs-on'], 'ubuntu-latest')
+  assert.equal(ci.jobs.macos['runs-on'], 'macos-latest')
+  assert.equal(ci.jobs.macos['continue-on-error'], true)
+  for (const job of [ci.jobs.policy, ci.jobs.quality, ci.jobs.portability]) assert.notEqual(job['continue-on-error'], true)
   const testStep = ci.jobs.quality.steps.find(step => step.run?.startsWith('pnpm test '))
   assert.match(testStep.run, /--shard=\$\{\{ matrix.shard \}\}\/2/)
   assert.equal(testStep.if, undefined)
@@ -31,7 +34,7 @@ test('both Windows runtimes keep complete, disjoint test shards and required pol
       for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
         const file = path.join(directory, entry.name)
         if (entry.isDirectory() && entry.name !== 'node_modules') walk(file)
-        else if (entry.isFile() && entry.name.endsWith('.spec.ts')) expected.push(file)
+        else if (entry.isFile() && /\.(spec|test)\.ts$/.test(entry.name)) expected.push(file)
       }
     }
     for (const entry of fs.readdirSync(path.join(root, 'packages'), { withFileTypes: true })) {
@@ -78,4 +81,12 @@ test('required registry packages gate finalize, companion stays independent, ver
   assert.match(jobs.finalize.steps[0].run, /companion-independent/)
   assert.ok(!registry.env?.NODE_AUTH_TOKEN)
   assert.equal(jobs.publish.outputs.ready, '${{ steps.registry.outputs.ready }}')
+})
+
+test('no workflow can move npm dist-tags outside the reviewed release path', () => {
+  const directory = path.join(root, '.github/workflows')
+  for (const name of fs.readdirSync(directory)) {
+    const text = fs.readFileSync(path.join(directory, name), 'utf8')
+    assert.doesNotMatch(text, /npm\s+dist-tag\s+add/, `${name} must not move npm dist-tags`)
+  }
 })

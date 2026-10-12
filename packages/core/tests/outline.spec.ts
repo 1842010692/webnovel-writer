@@ -116,7 +116,7 @@ describe('章细纲(格式规格 §3.3)', () => {
 
   it('章名 B2 reject', () => {
     const root = mkBook()
-    expect(() => writeCandidate(root, { 卷: 1, 章名: 'a/b' })).toThrow(/B2/)
+    expect(() => writeCandidate(root, { 卷: 1, 章名: 'a/b' })).toThrow(/路径字段「章名」不合法/)
   })
 })
 

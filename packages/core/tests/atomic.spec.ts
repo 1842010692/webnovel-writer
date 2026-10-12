@@ -25,7 +25,7 @@ describe('批量原子写(机制 B1)', () => {
 
   it('路径校验:拒绝绝对路径与 .. 穿越(B1/B2 衔接)', () => {
     const root = mkRoot()
-    expect(() => writeBatchAtomic(root, [{ relPath: '../越界.md', content: 'x' }])).toThrow(/B1/)
+    expect(() => writeBatchAtomic(root, [{ relPath: '../越界.md', content: 'x' }])).toThrow(/路径穿越/)
     expect(() => writeBatchAtomic(root, [{ relPath: 'D:/绝对.md', content: 'x' }])).toThrow(/绝对/)
     expect(fs.readdirSync(root)).toEqual([])
   })
@@ -37,7 +37,7 @@ describe('批量原子写(机制 B1)', () => {
     expect(() => writeBatchAtomic(root, [
       { relPath: 'a/新文件.md', content: '新' },
       { relPath: '占位目录', content: 'x' },
-    ])).toThrow(/B1/)
+    ])).toThrow(/原子写失败/)
     expect(fs.existsSync(path.join(root, 'a/新文件.md'))).toBe(false)
     expect(fs.statSync(path.join(root, '占位目录')).isDirectory()).toBe(true) // 既有目录不受损
   })
@@ -50,7 +50,7 @@ describe('批量原子写(机制 B1)', () => {
     expect(() => writeBatchAtomic(root, [
       { relPath: 'a/旧.md', content: '新内容' },
       { relPath: '占位目录', content: 'x' },
-    ])).toThrow(/B1/)
+    ])).toThrow(/原子写失败/)
     expect(fs.readFileSync(path.join(root, 'a/旧.md'), 'utf-8')).toBe('旧内容')
   })
 
@@ -60,7 +60,7 @@ describe('批量原子写(机制 B1)', () => {
     expect(() => writeBatchAtomic(root, [
       { relPath: '账本/线索.md', content: '账' },
       { relPath: '占位目录', content: 'x' },
-    ])).toThrow(/B1/)
+    ])).toThrow(/原子写失败/)
     expect(fs.existsSync(path.join(root, '账本/线索.md'))).toBe(false)
   })
 })
