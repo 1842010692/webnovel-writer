@@ -71,7 +71,7 @@ export function validateSegment(name: string): ReadonlyArray<string> {
 export function assertSegment(name: string, field: string): void {
   const problems = validateSegment(name)
   if (problems.length > 0) {
-    throw new Error(`路径字段「${field}」不合法:${problems.join(';')}(B2 路径白名单)`)
+    throw new Error(`路径字段「${field}」不合法：${problems.join(';')}。请换一个名称`)
   }
 }
 

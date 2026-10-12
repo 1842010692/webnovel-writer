@@ -185,7 +185,7 @@ describe('改稿最小 + 定稿准备', () => {
       处置: '已解决',
       范围: '世界书/人物档案/主角.md',
     })
-    expect(r).toEqual({ ok: false, reason: '须呈报上游' })
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/^须呈报上游/) })
   })
 
   it('preparePack writes 8 files, 卷对账 contains 偏离 or 无偏离', () => {

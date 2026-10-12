@@ -11,7 +11,7 @@ export const novelToolTitles: Readonly<Record<string, string>> = {
   novel_roll_window: '更新近期窗口', novel_confirm_worldbook_entry: '确认世界书', novel_confirm_volume_outline: '确认卷纲',
   novel_assemble_materials: '组装写作材料', novel_apply_revision: '应用改稿', novel_apply_revision_batch: '应用批次改稿',
   novel_import_draft: '导入草稿', novel_record_review_findings: '记录审读结果', novel_record_proposal: '记录提案',
-  novel_resolve_proposal: '处置提案', novel_apply_retcon: '应用吃书补偿', novel_record_memory: '记录本书记忆',
+  novel_resolve_proposal: '处置提案', novel_apply_retcon: '应用吃书补偿', novel_record_memory: '记录记忆',
   novel_note_pending: '记录待补事项', novel_get_book_progress: '查看作品进度',
   novel_editor_suggest: '交回编辑建议',
 }
@@ -46,6 +46,8 @@ export function novelResultModel(props: ToolCallPhaseProps): NovelResultModel {
   if (!object(value) || typeof value.ok !== 'boolean') return result
   if (!value.ok || value.commitState === 'failed') return { ...result, state: 'error', label: '未完成', summary: text(value.reason) ?? text(value.message) ?? '本次操作未完成，请查看详情' }
   const facts: { label: string; value: string }[] = []
+  if (value.scope === 'book' || value.scope === 'author') facts.push({ label: '记忆归属', value: value.scope === 'book' ? '本书' : '作者' })
+  if (typeof value.changed === 'boolean') facts.push({ label: '文件', value: value.changed ? '已更新' : '无变化' })
   for (const [key, label] of [['bookName', '作品'], ['bookId', '书 ID'], ['卷', '当前卷'], ['规划卷', '规划目标卷']] as const) {
     if (typeof value[key] === 'string' || typeof value[key] === 'number') facts.push({ label, value: String(value[key]) })
   }

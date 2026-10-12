@@ -72,7 +72,7 @@ describe('聚合 skills 体系（渐进式披露与 Subagent 协同）', () => {
     expect(text).toContain('严禁代写正文')
     expect(text).toContain('节点路由')
     expect(text).toContain('novel_create_book')
-    expect(text).toContain('Subagent')
+    expect(text).toContain('子代理')
     expect(text).toContain('自包含')
     expect(text).toContain('发现项')
     expect(text).toContain('建议稿')
@@ -104,7 +104,7 @@ describe('聚合 skills 体系（渐进式披露与 Subagent 协同）', () => {
     expect(text).toContain('novel_create_book')
     expect(text).toContain('快速开写')
     expect(text).not.toContain('novel_seed_min_design')
-    expect(text).toContain('未经作者明确同意，严禁进入建书')
+    expect(text).toContain('未经作者明确批准，严禁进入建书')
   })
 
   it('定调设计：含契约六部 + 双路径 + 分部更新纪律 + 强制多方向', () => {
@@ -171,6 +171,15 @@ describe('聚合 skills 体系（渐进式披露与 Subagent 协同）', () => {
     expect(text).toContain('不设上限、不截断')
   })
 
+  it('定稿沉淀：红线写成 WARNING 块，并点名 novel_settle_chapter', () => {
+    const text = readSkill('novel-settle')
+    const warning = text.split('\n').filter((line) => line.startsWith('> ')).join('\n')
+    expect(warning).toContain('[!WARNING]')
+    expect(warning).toContain('novel_settle_chapter')
+    expect(warning).toContain('未获作者明确批准')
+    expect(warning).toContain('严禁调用')
+  })
+
   it('全面审读：含 8 维标准 + Subagent 派发指引 + 发现项规范', () => {
     const text = readSkill('novel-review')
     expect(text).toContain('章节结构')
@@ -181,9 +190,25 @@ describe('聚合 skills 体系（渐进式披露与 Subagent 协同）', () => {
     expect(text).toContain('节奏与张力')
     expect(text).toContain('读者承诺')
     expect(text).toContain('文风与表达')
-    expect(text).toContain('Subagent')
+    expect(text).toContain('子代理')
     expect(text).toContain('发现项')
     expect(text).toContain('绝不直接修改正文')
+  })
+
+  it('全面审读：回写次数单独成行', () => {
+    const text = readSkill('novel-review')
+    expect(text).toMatch(/^\s*- \*\*一次全量报告要回写 8 次。\*\*$/m)
+    expect(text).toContain('**严禁用通用写工具手写审核记录 JSON。**')
+  })
+
+  it('细纲备料：定位段九节写成有序列表；改稿：上游范围词单独列出', () => {
+    const outline = readSkill('novel-outline')
+    const sections = [...outline.matchAll(/^ {5}(\d)\. /gm)].map((match) => Number(match[1]))
+    expect(sections.slice(0, 9)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(outline).toContain('**前置条件核对结果**')
+    const revision = readSkill('novel-revision')
+    for (const word of ['世界书', '大纲', '作品契约', '构想', '账本', '本书记忆']) expect(revision).toContain(`\`${word}\``)
+    expect(revision).toContain('须呈报上游')
   })
 
   it('精修润色：含 7 道工序 + 保真红线 + 逐道回退机制', () => {
@@ -248,5 +273,23 @@ describe('聚合 skills 体系（渐进式披露与 Subagent 协同）', () => {
         expect(description, `${s.中文名}: description 中文`).toMatch(/[一-鿿]/)
       }
     }
+  })
+})
+
+describe('禁令与实际流程一致', () => {
+  it('小修快路：persona、改稿技能与工具描述都限定为作者逐字改法，生成模块记作者手改', async () => {
+    const { personaText } = await import('../src/persona')
+    const tools = fs.readFileSync(path.join(__dirname, '../src/novel-tools.ts'), 'utf8')
+    expect(personaText).toMatch(/作者逐字给出的替换或明确删除.*novel_apply_revision/)
+    expect(personaText).toContain('作者手改')
+    expect(readSkill('novel-revision')).toMatch(/作者只给方向[^\n]*派改稿子代理/)
+    expect(tools).toMatch(/补丁新文只能是作者给出的原文改法/)
+  })
+  it('定稿区只读，更正走吃书补偿；「已转提案」写进审读与改稿技能', async () => {
+    const { personaText } = await import('../src/persona')
+    expect(personaText).toMatch(/定稿区只读.*novel_apply_retcon/)
+    expect(readSkill('novel-director')).toMatch(/定稿区只读，更正只走吃书补偿/)
+    expect(readSkill('novel-review')).toContain('`已转提案` 六个')
+    expect(readSkill('novel-revision')).toMatch(/记 `已转提案`/)
   })
 })

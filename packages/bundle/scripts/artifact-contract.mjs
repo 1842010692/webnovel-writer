@@ -9,6 +9,7 @@ export const referenceDocs = [
   'skills/novel-settle/底本/沉淀对账.md',
 ]
 export const thinScripts = [
+  ['skills/novel-drafting/scripts/核验字数.mjs', 'draftLengthCli'],
   ['skills/novel-review/scripts/确定性检查.mjs', 'runChecksCli'],
   ['skills/novel-design/scripts/影响分析.mjs', 'analyzeImpactCli'],
   ['skills/novel-outline/scripts/影响分析.mjs', 'analyzeImpactCli'],

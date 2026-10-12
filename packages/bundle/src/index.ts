@@ -17,11 +17,10 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import * as skillFilesystem from '@deepseek-ai/dsh-skill-filesystem'
-import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
 import type { ToolExecutionToken, ToolRuntime } from '@deepseek-ai/dsh-tools'
 import { attachFileGateToAgent } from './gates'
+import { attachDraftLengthFeedbackToAgent } from './draft-length-feedback'
+import { isWritingAgent, writingCapabilityOf, type WritingCapability } from './agent-mode'
 import { uniqueBookRoot, scanBooks } from './bookshelf'
 import { attachStatusToAgent, type SystemPromptLike } from './status-context'
 import { canonicalizePath, isFullyQualifiedPath, isInsidePath } from '@webnovel/core'
@@ -48,6 +47,7 @@ export const name = 'webnovel-bundle'
  * 运行能力与插件运行时同属一份产物，不再内联 core 副本。
  */
 export { runChecksCli } from './scripts/deterministic-checks'
+export { draftLengthCli } from './scripts/draft-length-cli'
 /** 影响分析／材料备料／定稿备包／最小导出脚本的 CLI 能力（R21 切割）：只算不写，薄入口经 lib 调用。 */
 export { analyzeImpactCli } from './scripts/impact-cli'
 export { materialsCli } from './scripts/materials-cli'
@@ -113,11 +113,17 @@ function releaseWorkspaceRoot(claimed: string | undefined): void {
  * 一定可用；`get` 则在部分宿主表面缺席。任一条取到即算取到，两条都无则 fail-open。
  */
 function ctxGet<T>(ctx: Context, name: string): T | undefined {
-  const direct = (ctx as unknown as Record<string, unknown>)[name]
-  if (direct !== undefined) return direct as T
-  return typeof (ctx as { get?: (n: string) => unknown }).get === 'function'
-    ? (ctx as { get: (n: string) => unknown }).get(name) as T
-    : undefined
+  const read = (ctx as { get?: (n: string) => unknown }).get
+  if (typeof read === 'function') {
+    try {
+      const value = read.call(ctx, name) as T | undefined
+      if (value !== undefined) return value
+    } catch { /* 未注入的服务不能用属性访问，否则会抛 without inject。 */ }
+  }
+  try {
+    const direct = (ctx as unknown as Record<string, unknown>)[name]
+    return direct === undefined ? undefined : direct as T
+  } catch { return undefined }
 }
 
 /** 窄 host 面：仅消费 on（事件订阅），避开 cordis 对 keyof Events 的类型约束。 */
@@ -259,8 +265,8 @@ function claimProcessCwd(): string | undefined {
 
 /** 工具执行内可见的 agent ctx 窄读面：机会性读取走 `ctx.get`（B6；属性访问在
  *  未声明 inject 的 ctx 上会抛「cannot get property without inject」）。 */
-function agentCtxGet<T>(agent: AgentLike, name: string): T | undefined {
-  const agentCtx = agent.ctx as unknown as Record<string, unknown> | undefined
+function agentCtxGet<T>(agent: AgentLike | undefined, name: string): T | undefined {
+  const agentCtx = agent?.ctx as unknown as Record<string, unknown> | undefined
   if (agentCtx === undefined) return undefined
   const get = agentCtx['get']
   if (typeof get === 'function') {
@@ -313,23 +319,16 @@ function toExecContext(exec: DshToolExec): ToolExecContext {
 
 export function apply(ctx: Context) {
   ctx.logger.info('工作台插件已加载（webnovel bundle）')
-  const bundledSkillDir = fileURLToPath(new URL('../skills/', import.meta.url))
-  if (typeof ctx.inject !== 'function' || typeof ctx.plugin !== 'function') {
-    ctx.logger.warn('[webnovel-bundle] 随包技能未挂载：宿主缺少 inject/plugin 能力，请核对 DSH 版本。')
-  } else if (!existsSync(bundledSkillDir)) {
-    ctx.logger.warn(`[webnovel-bundle] 随包技能未挂载：安装包缺少技能目录 ${bundledSkillDir}`)
-  } else {
-    ctx.inject(['skills'], scope => {
-      scope.plugin(skillFilesystem, {
-        providerName: 'webnovel-bundled',
-        includeDefaultRoots: false,
-        bundledSkillDir,
-      })
-    })
+  // 预设在隔离上下文里重启，事件到不了宿主；由宿主服务上的 refresh 重算已有会话。
+  let refreshInstalledAgents = async (): Promise<void> => {}
+  const writingHost = {
+    active: true as const,
+    refresh(): Promise<void> { return refreshInstalledAgents() },
   }
-
+  if (typeof ctx.provide === 'function') ctx.provide('webnovelHost', writingHost)
   // 每会话 agent 装机状态与工具注册产物（effect 可回滚：undo 清空）。
   const installedAgents = new Map<string, AgentLike>()
+  const installedModes = new Map<string, WritingCapability | undefined>()
   const agentToolOffs = new Map<string, Array<() => void>>()
   const agentRestrictOffs = new Map<string, () => void>()
   let toolKit: { defs: NovelToolDefinition[]; askFn: AskFn | undefined } | undefined
@@ -352,13 +351,13 @@ export function apply(ctx: Context) {
     workspaces: () => {
       const registry = typeof ctx.get === 'function' ? ctx.get('workspaceRegistry') as { list(): readonly { path?: string }[] } | undefined : undefined
       return [...(typeof registry?.list === 'function' ? registry.list() : []).flatMap(workspace => workspace.path ? [workspace.path] : []),
-        ...[...installedAgents.values()].filter(isMainAgent).flatMap(agent => { const root = agentWorkspaceRoot(agent); return root ? [root] : [] })]
+        ...[...installedAgents.values()].filter(agent => isMainAgent(agent) && isWritingAgent(agent)).flatMap(agent => { const root = agentWorkspaceRoot(agent); return root ? [root] : [] })]
     },
     notify: (book, notice) => {
       const registry = typeof ctx.get === 'function' ? ctx.get('agents') as { get(id: string): unknown; roots(): readonly AgentLike[] } | undefined : undefined
       const agent = registry?.roots().find(candidate => (candidate.id === notice.sessionId || candidate.session?.header?.id === notice.sessionId)
         && registry.get(candidate.id) === candidate)
-      if (!agent || !isMainAgent(agent) || !agent.session?.header || typeof (agent as { followup?: unknown }).followup !== 'function') return false
+      if (!agent || !isMainAgent(agent) || !isWritingAgent(agent) || !agent.session?.header || typeof (agent as { followup?: unknown }).followup !== 'function') return false
       if (bookRootOfBookIdFor(book.bookId, agent) !== book.root) return false
       return notifySaved(agent as Parameters<typeof notifySaved>[0], indexFailureMessage(book, notice)).notification === 'delivered'
     },
@@ -403,6 +402,7 @@ export function apply(ctx: Context) {
   /** 主 Agent scoped 注册（E1/E2 落码）：经 agent 的 scope 层注册，对该 agent
    *  与其后代可见，兄弟 agent 不可见；off 收进 agentToolOffs 随插件卸载撤销。 */
   function registerToolsInto(agent: AgentLike): boolean {
+    if (!isWritingAgent(agent)) return false
     if (toolKit === undefined) return false
     if (agentToolOffs.has(agent.id)) return true
     const registry = agentCtxGet<ToolRuntime>(agent, 'tools')
@@ -419,7 +419,7 @@ export function apply(ctx: Context) {
       if (typeof off === 'function') offs.push(off)
     }
     agentToolOffs.set(agent.id, offs)
-    ctx.logger.info(`[webnovel-bundle] 已为主 Agent（${agent.id}）scoped 注册 ${toolKit.defs.length} 个写作工具${toolKit.askFn === undefined ? '(裁决通道缺失,定稿沉淀不可用)' : ''}。`)
+    ctx.logger.info(`[webnovel-bundle] 已为主控（${agent.id}）scoped 注册 ${toolKit.defs.length} 个写作工具${toolKit.askFn === undefined ? '（裁决通道缺失，定稿沉淀不可用）' : ''}。`)
     return true
   }
 
@@ -433,18 +433,11 @@ export function apply(ctx: Context) {
     agentRestrictOffs.clear()
   }
 
-  function enforceChildApproval(agent: AgentLike): void {
-    if (isMainAgent(agent)) return
-    const approval = agentCtxGet<{ setPolicy?: (agent: unknown, policy: 'never') => void }>(agent, 'approval')
-    if (typeof approval?.setPolicy !== 'function') return
-    try { approval.setPolicy(agent, 'never') }
-    catch (err) { ctx.logger.warn(`[webnovel-bundle] 子 Agent 审批策略设置失败（${agent.id}）：${String(err)}`) }
-  }
-
   /** 子 Agent restrict（E2）：deny 名单须是子 Agent 当前可见面的已知名字，
    *  工具尚未注册到祖先层时 restrict 会抛「未知名字」——此时返回 false，
    *  由第三步反应式驱动在工具面就绪后重挂（registerAllInstalled 尾部）。 */
   function restrictNovelToolsInto(agent: AgentLike): boolean {
+    if (!isWritingAgent(agent)) return false
     if (toolKit === undefined) return false
     if (agentRestrictOffs.has(agent.id)) return true
     const tools = agentCtxGet<{ restrict?: (filter: { deny?: readonly string[] }) => () => void }>(agent, 'tools')
@@ -455,7 +448,7 @@ export function apply(ctx: Context) {
       if (typeof offRestrict === 'function') agentRestrictOffs.set(agent.id, offRestrict)
       return true
     } catch (err) {
-      ctx.logger.warn(`[webnovel-bundle] 子 Agent 工具 restrict 暂不可挂（${agent.id}）：${err instanceof Error ? err.message : String(err)}`)
+      ctx.logger.warn(`[webnovel-bundle] 子代理工具 restrict 暂不可挂（${agent.id}）：${err instanceof Error ? err.message : String(err)}`)
       return false
     }
   }
@@ -491,11 +484,14 @@ export function apply(ctx: Context) {
   step(ctx, 'webnovel:agent-attach', () => {
     const host = ctx as unknown as NarrowHost
     if (typeof host.on !== 'function') return
+    let open = true
     const subscriptions: Array<() => void> = []
     const attachments = new Map<string, Array<() => void | Promise<void>>>()
-    const detachAgent = (agent: AgentLike): void => {
-      if (installedAgents.get(agent.id) !== agent) return
+    const detachJobs = new Set<Promise<void>>()
+    const detachAgent = (agent: AgentLike): Promise<void> => {
+      if (installedAgents.get(agent.id) !== agent) return Promise.resolve()
       installedAgents.delete(agent.id)
+      installedModes.delete(agent.id)
       const offs = [
         ...(agentToolOffs.get(agent.id) ?? []),
         ...(attachments.get(agent.id) ?? []),
@@ -504,21 +500,36 @@ export function apply(ctx: Context) {
       agentToolOffs.delete(agent.id)
       agentRestrictOffs.delete(agent.id)
       attachments.delete(agent.id)
+      const pending: Array<Promise<unknown>> = []
       for (const off of offs.reverse()) {
         try {
-          void Promise.resolve(off()).catch(err => ctx.logger.warn(`[webnovel-bundle] Agent 卸载失败（${agent.id}）：${String(err)}`))
-        } catch (err) { ctx.logger.warn(`[webnovel-bundle] Agent 卸载失败（${agent.id}）：${String(err)}`) }
+          const result = off()
+          if (result !== undefined && typeof (result as Promise<unknown>).then === 'function') pending.push(result as Promise<unknown>)
+        } catch (err) {
+          ctx.logger.warn(`[webnovel-bundle] Agent 卸载失败（${agent.id}）：${err instanceof Error ? err.message : String(err)}`)
+        }
       }
+      const job = Promise.all(pending).then(() => undefined, (err: unknown) => {
+        ctx.logger.warn(`[webnovel-bundle] Agent 卸载失败（${agent.id}）：${err instanceof Error ? err.message : String(err)}`)
+      })
+      detachJobs.add(job)
+      void job.finally(() => detachJobs.delete(job))
+      return job
     }
-    const installFor = (agent: AgentLike): void => {
+    const installFor = (agent: AgentLike, disableWriting = false): void => {
+      if (!open) return
+      const capability = disableWriting ? undefined : writingCapabilityOf(agent)
       const agentId = agent.id
       const agentCtx = agent.ctx as (Context & { readonly systemPrompt?: SystemPromptLike }) | undefined
       if (agentCtx === undefined) return
       // 幂等：agent/created 与 agents.list() 初装可能重叠；卸载重装时 map 已清空。
       const previous = installedAgents.get(agentId)
-      if (previous === agent) return
-      if (previous !== undefined) detachAgent(previous)
+      const previousMode = installedModes.get(agentId)?.mode ?? 'plain'
+      const nextMode = capability?.mode ?? 'plain'
+      if (previous === agent && previousMode === nextMode) return
+      if (previous !== undefined) void detachAgent(previous)
       installedAgents.set(agentId, agent)
+      installedModes.set(agentId, capability)
       const attached: Array<() => void | Promise<void>> = []
       attachments.set(agentId, attached)
 
@@ -526,7 +537,7 @@ export function apply(ctx: Context) {
       const isSubagent = !isMainAgent(agent)
       // D10：本 agent 会话所附工作区根（会话 cwd 优先，全局认领兜底）。
       const rootOf = (): string | undefined => agentWorkspaceRoot(agent)
-      if (!isSubagent) {
+      if (capability !== undefined && !isSubagent) {
         const workspace = rootOf()
         if (workspace) indexing.addWorkspace(workspace)
         // 主 Agent persona（轻适配：scoped shadow deployment:persona-prefix，不压 dsh 原生指引段）。
@@ -546,14 +557,13 @@ export function apply(ctx: Context) {
         }
         // 主 Agent scoped 工具注册（toolKit 未就绪时由第三步反应式补装）。
         registerToolsInto(agent)
-      } else {
+      } else if (capability !== undefined) {
         // 子 Agent 运行时全封（E2＋R8，运行时对齐批）：
         // ① tools.restrict({deny}) 收掉小说工具继承面（宿主原生工具面由宿主 toolFilter 负责）；
         //    工具面未就绪时由第三步反应式补挂；
-        // ② approval 策略 'never'——子 Agent 的授权请求自动拒绝（子 Agent 不能发起审批，R8）；
+        // ② 原生 subagent 在委派时固定审批策略；插件不再改写会话策略；
         // ③ userQuestions 由 dsh 原生 DELEGATED_CALLER 拒绝，无需插件处理。
         restrictNovelToolsInto(agent)
-        enforceChildApproval(agent)
       }
 
       // 文件门禁（无论主 Agent 还是子 Agent 均挂载门禁，确保写入边界）
@@ -570,9 +580,35 @@ export function apply(ctx: Context) {
           return scanBooks(root).find((b) => inside(b.root, abs))?.root
         },
         workspaceRoot: rootOf,
+        managedWorkspaces: () => {
+          const registry = ctxGet<{ list(): readonly { path?: string }[] }>(ctx, 'workspaceRegistry')
+          return registry?.list().flatMap(workspace => workspace.path ? [workspace.path] : []) ?? []
+        },
+        resolveTarget: async (target, exec) => {
+          const caller = exec.agent as AgentLike | undefined
+          const filesystem = agentCtxGet<FileSystem>(caller, 'fs')
+          if (filesystem === undefined) return undefined
+          const policy = filesystem.sandboxMode === undefined ? undefined
+            : agentCtxGet<{ resolve(input: { session?: unknown }): { workspaceRoot: string } }>(caller, 'sandboxPolicy')
+          if (filesystem.sandboxMode !== undefined && policy === undefined) throw new Error('文件沙箱策略尚未就绪')
+          const cwd = policy?.resolve(caller?.session ? { session: caller.session } : {}).workspaceRoot ?? caller?.session?.header?.cwd
+          const resolved = await filesystem.resolve(target, {
+            ...(cwd === undefined ? {} : { cwd }), ...(exec.signal === undefined ? {} : { signal: exec.signal }),
+          })
+          return isFullyQualifiedPath(resolved.displayPath) ? canonicalizePath(resolved.displayPath) : undefined
+        },
       })
       if (offGate === undefined) ctx.logger.warn(`[webnovel-bundle] 文件门禁未挂载（${agentId}）。`)
       else attached.push(offGate)
+      const offLength = capability === undefined ? undefined : attachDraftLengthFeedbackToAgent(agentCtx as unknown as Parameters<typeof attachDraftLengthFeedbackToAgent>[0], {
+        agent, workspaceRoot: rootOf, warn: message => ctx.logger.warn(message),
+      })
+      if (offLength !== undefined) attached.push(offLength)
+    }
+    refreshInstalledAgents = async () => {
+      if (!open) return
+      for (const agent of [...installedAgents.values()]) installFor(agent)
+      await Promise.all(detachJobs)
     }
 
     const offCreated = host.on('agent/created', ((payload: { readonly agent?: AgentLike }) => {
@@ -591,14 +627,34 @@ export function apply(ctx: Context) {
       if (agents === undefined) return
       for (const a of agents.list() as ReadonlyArray<AgentLike>) installFor(a)
     }
+    const offPreset = host.on('agent-preset/selected', ((sessionId: string) => {
+      for (const agent of [...installedAgents.values()]) {
+        if (agent.id === sessionId || agent.session?.header?.id === sessionId) installFor(agent)
+      }
+    }) as never)
+    if (typeof offPreset === 'function') subscriptions.push(() => offPreset())
+    const offCapability = host.on('webnovel/writing-capability-updated', (() => {
+      for (const agent of [...installedAgents.values()]) installFor(agent)
+    }) as never)
+    if (typeof offCapability === 'function') subscriptions.push(() => offCapability())
+    const presetReg = withServices(ctx, ['agentPresets'], scope => {
+      attachExisting(scope)
+      step(scope, 'webnovel:preset-generation', () => () => {
+        for (const agent of [...installedAgents.values()]) installFor(agent, true)
+      })
+    })
     const agentsReg = withServices(ctx, ['agents'], attachExisting)
     if (!agentsReg.reactive) attachExisting(ctx)
 
-    return () => {
+    return async () => {
+      open = false
+      refreshInstalledAgents = async () => {}
       for (const off of subscriptions.reverse()) off()
-      for (const agent of installedAgents.values()) detachAgent(agent)
+      await Promise.all([...installedAgents.values()].map(agent => detachAgent(agent)))
+      await Promise.all(detachJobs)
       disposeAllAgentTools()
-      void agentsReg.fiber?.dispose?.()
+      await agentsReg.fiber?.dispose?.()
+      await presetReg.fiber?.dispose?.()
     }
   })
 
@@ -610,6 +666,7 @@ export function apply(ctx: Context) {
       // 注册落在 Agent scope，须显式归还给本次依赖生命周期；依赖重启重建工具集。
       step(scope, 'webnovel:tools-generation', () => {
         ensureToolKit(scope)
+        refreshInstalledAgents()
         for (const agent of installedAgents.values()) {
           if (isMainAgent(agent)) registerToolsInto(agent)
         }
@@ -631,14 +688,7 @@ export function apply(ctx: Context) {
     }
   })
 
-  step(ctx, 'webnovel:approval-policy', () => {
-    const enforceAll = (): void => {
-      for (const agent of installedAgents.values()) enforceChildApproval(agent)
-    }
-    const approvalReg = withServices(ctx, ['approval'], enforceAll)
-    if (!approvalReg.reactive) enforceAll()
-    return () => { void approvalReg.fiber?.dispose?.() }
-  })
+  refreshInstalledAgents()
 
   // 第四步：环境自检（有书时总览可用）。
   step(ctx, 'webnovel:self-check', () => {

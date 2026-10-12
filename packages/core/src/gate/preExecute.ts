@@ -40,7 +40,7 @@ export function extractToolPath(exec: ToolCall): string | null {
 export function decidePreExecute(bookRoot: string, exec: ToolCall): PreToolDecision {
   if (!isMutatingFileTool(exec)) return { kind: 'allow' }
   const target = extractToolPath(exec)
-  if (target === null) return { kind: 'deny', reason: '文件工具缺少可解析路径,拒绝写入' }
+  if (target === null) return { kind: 'deny', reason: '文件工具缺少可解析的路径，拒绝写入。请在参数中给出目标文件路径' }
   const access = gateFileAccess(bookRoot, target)
   if (!access.allow) return { kind: 'deny', reason: access.reason }
   const draft = gateWriteDraft(bookRoot, access.relPath)

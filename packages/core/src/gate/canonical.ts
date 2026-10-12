@@ -83,9 +83,16 @@ export function canonicalizePath(p: string): string {
  * （root 本身不算 inside——书仓根不是书仓内的可写目标）。
  */
 export function isInsidePath(rootAbs: string, targetAbs: string): boolean {
-  const root = canonicalizePath(rootAbs)
+  return isInsideCanonicalRoot(canonicalizePath(rootAbs), targetAbs)
+}
+
+/**
+ * 与 isInsidePath 相同，但 root 已由调用方 canonical 化（例如一次加锁事务内），
+ * 只对 target 做 IO probe。按路径段判断 `..`：`..草稿` 这样的名字仍在书仓内。
+ */
+export function isInsideCanonicalRoot(rootCanonical: string, targetAbs: string): boolean {
   const target = canonicalizePath(targetAbs)
-  if (root === '' || target === '') return false
-  const rel = path.relative(root, target)
-  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+  if (rootCanonical === '' || target === '') return false
+  const rel = path.relative(rootCanonical, target)
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)
 }

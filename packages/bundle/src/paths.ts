@@ -23,7 +23,7 @@ export function parseBookPathInput(input: string): ResolveTarget {
     const rel = input.slice(idx + 1)
     if (bookId !== '' && rel !== '') return { kind: 'book-relative', bookId, rel }
   }
-  return { kind: 'bare-relative', detail: '裸相对路径拒绝:请携带 书id:仓内相对路径 或绝对路径(PRD §4.7)' }
+  return { kind: 'bare-relative', detail: '裸相对路径拒绝：请携带 书id:仓内相对路径 或绝对路径(PRD §4.7)' }
 }
 
 /** 子路径判定(immutable,防 ../ 逃逸)。 */
@@ -45,8 +45,8 @@ export function resolveToBookPath(
   if (target.kind === 'bare-relative') return { ok: false, reason: target.detail }
   if (target.kind === 'absolute') return { ok: true, path: target.abs }
   const bookRoot = rootOfBook(target.bookId)
-  if (bookRoot === undefined) return { ok: false, reason: `未知书目:${target.bookId}(书id 须已在书架扫描中发现)` }
+  if (bookRoot === undefined) return { ok: false, reason: `未知书目：${target.bookId}(书id 须已在书架扫描中发现)` }
   const abs = path.resolve(bookRoot, target.rel)
-  if (!isSubOf(bookRoot, abs)) return { ok: false, reason: '路径逃逸书仓根,拒绝(不变量 4)' }
+  if (!isSubOf(bookRoot, abs)) return { ok: false, reason: '路径逃逸书仓根，拒绝(不变量 4)' }
   return { ok: true, path: abs }
 }

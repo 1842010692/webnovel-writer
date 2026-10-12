@@ -1,7 +1,7 @@
 /**
  * 书级进度与状态面(B 任务,2026-08-29):
  * 一条原则——能算的现算,只写「算不出来的」。工件状态/计数/章进度一律现算,
- * 落盘只落两样:待补便签(随工件走 design:)与偏离处置结论(作者层记忆,书房)。
+ * 落盘只落两样:待补便签与偏离处置结论(本书记忆，旧作者条目受限兼容)。
  * 书级进度卡不进 context;由主 Agent 在选完书、动设计侧节点前显式查询。
  */
 
@@ -220,7 +220,7 @@ function writePendingLocked(bookRoot: string, relPath: string, 节名: string, �
   | { readonly ok: true; readonly relPath: string }
   | { readonly ok: false; readonly reason: string } {
   const text = readText(bookRoot, relPath)
-  if (text === null) return { ok: false, reason: `工件不存在:${relPath}` }
+  if (text === null) return { ok: false, reason: `工件不存在：${relPath}` }
   const lines = text.split('\n')
   const escaped = 节名.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const heading = new RegExp(`^\\s*#{1,6}\\s+${escaped}\\s*$`)

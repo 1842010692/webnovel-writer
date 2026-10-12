@@ -11,10 +11,28 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { authorDocumentPath } from '../revise/document'
 import { parseDocument } from '../repo/frontmatter'
+import { canonicalizePath, isFullyQualifiedPath } from '../gate/canonical'
 
 /** 目录树常量对策:契约目录(与 core LAYOUT.契约 一致,防字符串漂移)。 */
 const CONTRACT_DIR = '作品契约'
 const CONTRACT_FILE = '契约.md'
+
+/** Identify a book from the actual target's ancestors, regardless of the caller's cwd. */
+export function containingBookRoot(target: string): string | undefined {
+  if (!isFullyQualifiedPath(target)) return undefined
+  let current = canonicalizePath(target)
+  for (;;) {
+    try {
+      if (fs.statSync(path.join(current, CONTRACT_DIR, CONTRACT_FILE)).isFile()) return current
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error
+    }
+    const parent = path.dirname(current)
+    if (parent === current) return undefined
+    current = parent
+  }
+}
 
 export interface WorkspaceBook {
   /** 目录名(即书名,格式规格 §2.1 `<书名>/`)。 */

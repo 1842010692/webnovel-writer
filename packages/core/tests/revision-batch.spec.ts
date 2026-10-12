@@ -166,7 +166,7 @@ describe('改稿批(A8)', () => {
         { 发现项编号: '不存在', 处置: '已解决' },
       ],
     })
-    expect(res).toEqual({ ok: false, reason: '发现项不存在:不存在' })
+    expect(res).toEqual({ ok: false, reason: '发现项不存在：不存在' })
     expect(listChapterDrafts(root, key).map((d) => d.file)).toEqual(['稿1.md'])
     const record = loadReviewRecord(root, key)!
     expect(record.问题.find((p) => p.发现项编号 === '审-01-0001-作者意见-1')?.处置状态).toBe('待处理')
@@ -188,6 +188,6 @@ describe('改稿批(A8)', () => {
       新稿正文: `${HARD}。`,
       处置: [{ 发现项编号: '审-01-0001-作者意见-1', 处置: '已解决' }],
     })
-    expect(res).toEqual({ ok: false, reason: '须呈报上游' })
+    expect(res).toMatchObject({ ok: false, reason: expect.stringMatching(/^发现项 \S+：须呈报上游.*novel_record_proposal.*修正方法/) })
   })
 })

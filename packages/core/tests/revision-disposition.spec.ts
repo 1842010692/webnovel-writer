@@ -4,7 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import {
-  applyRevision, applyRevisionBatch, draftHashOf, normalizeFinding, parseDocument,
+  applyRevision, applyRevisionBatch, draftHashOf, normalizeFinding, parseDocument, loadReviewRecord,
   paths, reviewInputFingerprintOf, reviewRecordHashOf, scanChapter, serializeDocument,
   type ReviewRecord,
 } from '../src/index'
@@ -117,13 +117,27 @@ describe('处置只改所选字段，审核证据保持原始适用范围', () =
     expect(fs.readdirSync(path.join(f.root, paths.草稿目录(1, key.章名)))).toEqual(['稿1.md'])
   })
 
+  it('处置状态非法：点名发现项，列出合法值与修正方法', () => {
+    const f = fixture(2)
+    for (const result of [
+      applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: '已确认' as never }),
+      applyRevisionBatch(f.root, { ...key, 处置: [{ 发现项编号: 'f-2', 处置: '已确认' as never }] }),
+    ]) {
+      expect(result.ok).toBe(false)
+      if (result.ok) continue
+      expect(result.reason).toMatch(/^发现项 f-[12]：处置状态非法「已确认」/)
+      expect(result.reason).toContain('合法值：待处理、已接受修改、已解决、作者保留、已驳回、无法判断')
+      expect(result.reason).toContain('修正方法：')
+    }
+  })
+
   it('上游实际修改不能借纯处置放行', () => {
     const f = fixture(21, true)
     const before = f.text()
     for (const disposition of ['已解决', '已接受修改'] as const) {
-      expect(applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: disposition })).toEqual({ ok: false, reason: '须呈报上游' })
+      expect(applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: disposition })).toMatchObject({ ok: false, reason: expect.stringMatching(/^须呈报上游/) })
     }
-    expect(applyRevisionBatch(f.root, { ...key, 新稿正文: '新稿', 处置: [{ 发现项编号: 'f-1', 处置: '作者保留' }] })).toEqual({ ok: false, reason: '须呈报上游' })
+    expect(applyRevisionBatch(f.root, { ...key, 新稿正文: '新稿', 处置: [{ 发现项编号: 'f-1', 处置: '作者保留' }] })).toMatchObject({ ok: false, reason: expect.stringMatching(/^发现项 f-1：须呈报上游/) })
     expect(f.text()).toBe(before)
   })
 
@@ -143,5 +157,63 @@ describe('处置只改所选字段，审核证据保持原始适用范围', () =
     expect(f.text()).toBe(before)
     expect(fs.readFileSync(path.join(f.root, pendingRel), 'utf8')).toBe(f.draft)
     expect(fs.readdirSync(path.join(f.root, paths.草稿目录(1, key.章名)))).toEqual(['稿1.md'])
+  })
+})
+
+describe('影响真源的发现项：提案通过后记「已转提案」', () => {
+  it('没有提案编号、提案未通过、非真源条目都拒绝；提案通过后可记入', async () => {
+    const { registerProposal, resolveProposal } = await import('../src/index')
+    const f = fixture(3, true)
+    const hash = () => scanChapter(f.root, key).审核记录哈希!
+    const run = (改动说明?: string, id = 'f-1') => applyRevisionBatch(f.root, { ...key, 审核记录哈希: hash(), 处置: [{ 发现项编号: id, 处置: '已转提案', ...(改动说明 === undefined ? {} : { 改动说明 }) }] })
+    expect(run()).toMatchObject({ ok: false, reason: expect.stringContaining('缺少提案编号') })
+    const reg = registerProposal(f.root, { 域: '内容修订', 类型: '修改计划', 内容: '改主角设定', 来源: '第1章审核 f-1', 关联发现项: [{ ...key, 发现项编号: 'f-1' }] })
+    expect(reg.ok).toBe(true)
+    if (!reg.ok) return
+    expect(run(`提案 ${reg.编号}`)).toMatchObject({ ok: false, reason: expect.stringContaining('不是「已通过」') })
+    expect(resolveProposal(f.root, reg.编号, '通过', '作者同意').ok).toBe(true)
+    expect(run(`提案 ${reg.编号}`, 'f-2')).toMatchObject({ ok: false, reason: expect.stringContaining('只用于影响真源') })
+    expect(run(`提案 ${reg.编号}`)).toMatchObject({ ok: true })
+    expect(JSON.parse(f.text()).问题[0]).toMatchObject({ 处置状态: '待处理', 处置: '待处理', 转交提案: { 提案编号: reg.编号 } })
+    expect(loadReviewRecord(f.root, key)!.问题[0]!.处置状态).toBe('已转提案')
+    expect(scanChapter(f.root, key).审核完成).toBe(true)
+    const withDraft = applyRevisionBatch(f.root, { ...key, 审核记录哈希: hash(), 新稿正文: '新正文。', 处置: [{ 发现项编号: 'f-1', 处置: '已转提案', 改动说明: `提案 ${reg.编号}` }] })
+    expect(withDraft).toMatchObject({ ok: false, reason: expect.stringContaining('须呈报上游') })
+    const single = applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: '已转提案', 改动说明: `提案 ${reg.编号}`, 审核记录哈希: hash() })
+    expect(single.ok).toBe(true)
+  })
+
+  it('不接受其他章节的提案、伪造范围、五位编号或回写入口直写转交状态', async () => {
+    const { registerProposal, resolveProposal } = await import('../src/index')
+    const { ingestFindings } = await import('../../review/src')
+    const f = fixture(2, true)
+    const reg = registerProposal(f.root, { 域: '内容修订', 类型: '修改计划', 内容: '另一章', 来源: '其他发现项', 关联发现项: [{ ...key, 章: 2, 发现项编号: 'f-1' }] })
+    resolveProposal(f.root, reg.编号, '通过', '批准另一章')
+    const before = f.text()
+    expect(applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: '已转提案', 提案编号: reg.编号 })).toMatchObject({ ok: false, reason: expect.stringContaining('未关联') })
+    expect(applyRevision(f.root, key, { 发现项编号: 'f-2', 处置: '已转提案', 范围: '世界书', 提案编号: reg.编号 })).toMatchObject({ ok: false, reason: expect.stringContaining('只用于影响真源') })
+    expect(applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: '已转提案', 改动说明: `提案 ${reg.编号}9` })).toMatchObject({ ok: false, reason: expect.stringContaining('编号非法') })
+    for (const injected of [{ 处置状态: '已转提案' }, { 处置: '已转提案' }, { 处置状态: '待处理', 转交提案: { 提案编号: reg.编号 } }]) {
+      expect(ingestFindings(f.root, key, '作者意见', [injected])).toMatchObject({ ok: false, reason: expect.stringContaining('不接受转交处置') })
+    }
+    expect(f.text()).toBe(before)
+  })
+
+  it('旧版字段保持待处理，保留扩展可往返；旧版明确处置后不恢复旧转交', async () => {
+    const { registerProposal, resolveProposal } = await import('../src/index')
+    const f = fixture(1, true)
+    const reg = registerProposal(f.root, { 域: '内容修订', 类型: '修改计划', 内容: '设定修订', 来源: '审核', 关联发现项: [{ ...key, 发现项编号: 'f-1' }] })
+    resolveProposal(f.root, reg.编号, '通过', '批准')
+    expect(applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: '已转提案', 提案编号: reg.编号 }).ok).toBe(true)
+    const legacy = JSON.parse(f.text())
+    // 2b585f3 scan 的旧判定只看这两个字段；不会误判转交已完成。
+    expect(legacy.问题.every((item: { 处置: string }) => item.处置 !== '' && item.处置 !== '待处理')).toBe(false)
+    f.put(reviewRel, JSON.stringify(legacy))
+    expect(loadReviewRecord(f.root, key)!.问题[0]!.处置状态).toBe('已转提案')
+    legacy.问题[0].处置 = legacy.问题[0].处置状态 = '作者保留'
+    f.put(reviewRel, JSON.stringify(legacy))
+    expect(loadReviewRecord(f.root, key)!.问题[0]!.处置状态).toBe('作者保留')
+    expect(applyRevision(f.root, key, { 发现项编号: 'f-1', 处置: '已驳回' }).ok).toBe(true)
+    expect(JSON.parse(f.text()).问题[0]).not.toHaveProperty('转交提案')
   })
 })

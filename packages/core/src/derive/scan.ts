@@ -8,7 +8,7 @@ import * as path from 'node:path'
 import { parseDocument } from '../repo/frontmatter'
 import { MACHINE_SCHEMA_VERSION, parseMachineJson } from '../repo/schema'
 import { isWindowEntryReady } from './states'
-import { draftHashOf, reviewInputFingerprintOf, reviewRecordHashOf } from '../evidence/record'
+import { draftHashOf, reviewInputFingerprintOf, reviewRecordHashOf, storedDisposition } from '../evidence/record'
 import { chapterNo } from '../repo/paths'
 import { materialReviewIdentity } from '../assembly/read'
 import { isDraftMarkdownFile } from '../repo/drafts'
@@ -82,9 +82,7 @@ interface ReviewRecord {
 }
 
 function issueDisposition(p: { readonly 处置?: string; readonly 处置状态?: string }): string {
-  if (typeof p.处置 === 'string' && p.处置 !== '') return p.处置
-  if (typeof p.处置状态 === 'string') return p.处置状态
-  return ''
+  return storedDisposition(p)
 }
 
 function parseReview(text: string | null): ReviewRecord | null {

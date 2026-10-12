@@ -1,3 +1,4 @@
+import { createPresetAgent, resumePresetAgent } from './preset-agents.mjs'
 import { createSettingsProfile } from './settings-profile.mjs'
 import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
@@ -14,6 +15,7 @@ import { checkMinimalExport } from './export-checks.mjs'
 import { checkSearch } from './retrieval-checks.mjs'
 import { checkSaveLoop } from './save-loop-check.mjs'
 import { checkReferences } from './reference-checks.mjs'
+import { checkDraftLength } from './draft-length-checks.mjs'
 
 const root = path.resolve(process.argv[2])
 const bundleUrl = pathToFileURL(path.resolve(process.argv[3])).href
@@ -65,6 +67,11 @@ const profile = [
   { id: 'webnovel-scenes', name: pathToFileURL(path.join(root, 'scenes.mjs')).href },
   { id: 'webnovel-reranking', name: pathToFileURL(path.join(root, 'reranking.mjs')).href },
   { id: 'webnovel', name: bundleUrl },
+  { id: 'agent-preset-registry', name: '@deepseek-ai/dsh-agent-preset-registry', config: { default: 'scriptor' } },
+  { id: 'preset-scriptor', name: '@deepseek-ai/dsh-agent-preset', config: { id: 'scriptor', name: '写作模式', plugins: [
+    { id: 'scriptor-agent', name: new URL('./preset.mjs', bundleUrl).href, isolate: { webnovelWriting: true } },
+  ] } },
+  { id: 'preset-standard', name: '@deepseek-ai/dsh-agent-preset', config: { id: 'standard', plugins: [] } },
 ]
 const configuredProfile = host === undefined ? profile : profile.map(row => row.name.startsWith('@deepseek-ai/')
   ? { ...row, name: pathToFileURL(host.entry(row.name)).href }
@@ -118,6 +125,8 @@ const retconArgs = { bookId: 'loader-book', 卷: 1, 章: 1, 章名: '开篇', �
 try {
   if (process.argv[4] === 'save-loop') {
     await checkSaveLoop({ root, book, workspace, ctx, service, git, check, report, host })
+  } else if (process.argv[4] === 'draft-length') {
+    await checkDraftLength({ root, book, workspace, ctx, service, check, report, host, execute, toggle, settingsProfile })
   } else {
   await check('真实 Loader 与基线版本', async () => {
     for (const row of profile.filter(row => row.name.startsWith('@deepseek-ai/dsh-'))) {
@@ -130,11 +139,39 @@ try {
     await service('workspaceRegistry').create(workspace)
   })
 
-  const main = (await service('agents').create({ sessionId: 'loader-main', meta: { cwd: workspace } })).agent
-  const child = (await main.ctx.get('agents').create({
+  const main = (await createPresetAgent(service('agents'), { sessionId: 'loader-main', meta: { cwd: workspace } })).agent
+  const child = (await createPresetAgent(main.ctx.get('agents'), {
     parentAgent: main, sessionId: 'loader-child', meta: { cwd: workspace, origin: 'subagent', parentSession: main.id, delegationDepth: 1 },
   })).agent
   report.identities = { main: main.id, child: child.id, sessionFormat: main.session.header.version, runtimeRoots: service('agents').roots().map(agent => agent.id) }
+
+  await check('写作模式与普通模式并存且普通文件遵循宿主路径', async () => {
+    const ordinaryCwd = path.join(root, 'ordinary-workspace')
+    fs.mkdirSync(ordinaryCwd)
+    const ordinary = await createPresetAgent(service('agents'), { sessionId: 'ordinary-main', meta: { cwd: ordinaryCwd } }, 'standard')
+    const delegated = await createPresetAgent(ordinary.agent.ctx.get('agents'), { parentAgent: ordinary.agent, sessionId: 'ordinary-child', meta: { cwd: ordinaryCwd } })
+    let approvals = 0
+    const off = ctx.on('approval/request', async () => { approvals++; return 'rejected' })
+    try {
+      assert.deepEqual(schemas(ordinary.agent), [])
+      assert.deepEqual(schemas(delegated.agent), [])
+      const ordinaryPrompt = await presentation(ordinary.agent)
+      assert.equal(ordinaryPrompt.persona.some(section => section.text.includes('写作工作台')), false)
+      assert.deepEqual(ordinaryPrompt.status, [])
+      assert.equal((await service('skills').list({ cwd: ordinaryCwd, scope: ordinary.agent })).filter(skill => skill.name.startsWith('novel-')).length, 0)
+      assert.equal(service('approval').overrideOf(delegated.agent.session), undefined)
+      const written = await execute(ordinary.agent, 'write', { file_path: 'relative.md', content: 'ordinary' })
+      assert.equal(written.isError, false, JSON.stringify(written))
+      assert.equal(fs.readFileSync(path.join(ordinaryCwd, 'relative.md'), 'utf8'), 'ordinary')
+      assert.equal(fs.existsSync(path.join(workspace, 'relative.md')), false)
+      assert.equal(approvals, 0)
+      const denied = await execute(ordinary.agent, 'write', { file_path: chapter, content: 'cannot overwrite a book' })
+      assert.equal(denied.isError, true)
+      assert.ok(fs.readFileSync(chapter, 'utf8').includes('原定稿正文'))
+      assert.equal(schemas(main).length, 31)
+      report.writingMode = { separateTools: true, separateContext: true, separateSkills: true, ordinaryRelativePath: true, bookStillProtected: true }
+    } finally { off(); await delegated.dispose(); await ordinary.dispose() }
+  })
 
   await check('主 Agent 工具与全局隔离', async () => {
     assert.equal(main.session.header.version, host === undefined ? baseline.registry.sessionFormat : baseline.source.sessionFormat)
@@ -146,7 +183,7 @@ try {
     assert.equal(typeof result.value.近况, 'string')
     assert.ok(result.value.近况.length > 0)
   })
-  await check('子 Agent 工具拒绝与真实 never 策略', async () => {
+  await check('子 Agent 工具拒绝且保留宿主审批策略', async () => {
     assert.deepEqual(schemas(child), [])
     const result = await execute(child, 'novel_select_book', { bookId: 'loader-book' })
     assert.equal(result.isError, true)
@@ -154,7 +191,7 @@ try {
     const editor = await execute(child, 'novel_editor_suggest', { requestId: 'abcdef', kind: 'none' })
     assert.equal(editor.isError, true)
     assert.match(JSON.stringify(editor), /UNKNOWN_TOOL/)
-    assert.equal(service('approval').overrideOf(child.session), 'never')
+    assert.equal(service('approval').overrideOf(child.session), undefined)
   })
   await check('真实问答拒绝受委派调用', async () => {
     await assert.rejects(service('userQuestions').ask({ agent: child, questions: [{ id: 'test', question: '继续？' }] }), { code: 'DELEGATED_CALLER' })
@@ -185,11 +222,15 @@ try {
     const local = path.join(workspace, '.agents', 'skills', names[0])
     fs.mkdirSync(local, { recursive: true })
     fs.writeFileSync(path.join(local, 'SKILL.md'), `---\nname: ${names[0]}\ndescription: 本地覆盖验收\n---\n本地技能覆盖。\n`)
-    const filesystem = await import(host === undefined ? '@deepseek-ai/dsh-skill-filesystem' : pathToFileURL(host.entry('@deepseek-ai/dsh-skill-filesystem')).href)
-    const localProvider = ctx.plugin(filesystem, { providerName: 'acceptance-local' })
-    await localProvider
-    assert.equal((await service('skills').get(names[0], { cwd: workspace, scope: main })).provider, 'acceptance-local')
-    await localProvider.dispose()
+    let project
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      project = await service('skills').get(names[0], { cwd: workspace, scope: main })
+      if (project?.content.includes('本地技能覆盖。')) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert.equal(project.provider, 'webnovel-bundled')
+    assert.ok(project.content.includes('本地技能覆盖。'), project.content.slice(0, 180))
+    fs.unlinkSync(path.join(local, 'SKILL.md'))
     await toggle('webnovel', true)
     assert.equal((await skills()).length, 0)
     await toggle('webnovel', false)
@@ -223,14 +264,14 @@ try {
     assert.deepEqual(await presentation(main), prompt)
   })
   await check('运行时归属优先于历史 origin', async () => {
-    const unmarked = await main.ctx.get('agents').create({ parentAgent: main, sessionId: 'loader-unmarked-child', meta: { cwd: workspace } })
-    const restoredRoot = await service('agents').create({ sessionId: 'loader-lineage-root', meta: { cwd: workspace, origin: 'subagent', parentSession: main.id } })
+    const unmarked = await createPresetAgent(main.ctx.get('agents'), { parentAgent: main, sessionId: 'loader-unmarked-child', meta: { cwd: workspace } })
+    const restoredRoot = await createPresetAgent(service('agents'), { sessionId: 'loader-lineage-root', meta: { cwd: workspace, origin: 'subagent', parentSession: main.id } })
     try {
       assert.ok(!service('agents').roots().includes(unmarked.agent))
       assert.ok(service('agents').roots().includes(restoredRoot.agent))
       assert.deepEqual(schemas(unmarked.agent), [])
       assert.equal(schemas(restoredRoot.agent).length, 31)
-      assert.equal(service('approval').overrideOf(unmarked.agent.session), 'never')
+      assert.equal(service('approval').overrideOf(unmarked.agent.session), undefined)
       assert.notEqual(service('approval').overrideOf(restoredRoot.agent.session), 'never')
     } finally {
       await unmarked.dispose()
@@ -238,11 +279,11 @@ try {
     }
   })
   await check('同一会话恢复后重新装机', async () => {
-    const previous = await service('agents').create({ sessionId: 'loader-resume', meta: { cwd: workspace } })
+    const previous = await createPresetAgent(service('agents'), { sessionId: 'loader-resume', meta: { cwd: workspace } })
     assert.equal(schemas(previous.agent).length, 31)
     await service('sessionPersistence').flush()
     await previous.dispose()
-    const resumed = await service('agents').resume({ resumeSessionId: 'loader-resume' })
+    const resumed = await resumePresetAgent(service('agents'), { resumeSessionId: 'loader-resume' })
     try {
       assert.equal(schemas(resumed.agent).length, 31)
       assert.match((await presentation(resumed.agent)).status[0].text, /【工作区总览】/)
@@ -257,21 +298,23 @@ try {
     assert.equal(schemas(main).length, 31)
     assert.deepEqual(schemas(child), [])
   })
-  await check('审批依赖晚到仍拒绝子 Agent', async () => {
+  await check('审批依赖重启不改写会话策略', async () => {
     await toggle('approval', true)
-    const late = await main.ctx.get('agents').create({ parentAgent: main, sessionId: 'loader-late-child', meta: { cwd: workspace, origin: 'subagent' } })
+    const late = await createPresetAgent(main.ctx.get('agents'), { parentAgent: main, sessionId: 'loader-late-child', meta: { cwd: workspace, origin: 'subagent' } })
     await toggle('approval', false)
     let asked = 0
     const off = ctx.on('approval/request', async () => { asked++; return 'allowed-once' })
     try {
       const outcome = await withTurn(late.agent, () => service('approval').request({ agent: late.agent, toolName: 'write' }))
-      assert.equal(outcome, 'rejected')
-      assert.equal(asked, 0)
-      assert.equal(service('approval').overrideOf(late.agent.session), 'never')
+      assert.equal(outcome, 'allowed-once')
+      assert.equal(asked, 1)
+      assert.equal(service('approval').overrideOf(late.agent.session), undefined)
     } finally { off(); await late.dispose() }
   })
   await check('真实文件工具动作授权与审计', async () => {
     const destination = path.join(root, 'outside-approved.md')
+    const ask = main.ctx.on('tools/pre-execute', (exec, next) => exec.name === 'write' && exec.arguments.file_path === destination
+      ? { kind: 'ask', reason: 'Host fixture requires approval for this operation' } : next())
     let asked = 0
     const off = ctx.on('approval/request', async request => {
       asked++
@@ -291,10 +334,12 @@ try {
       const denied = await execute(main, 'write', { file_path: chapter, content: 'forbidden' })
       assert.equal(denied.isError, true)
       assert.equal(fs.readFileSync(chapter, 'utf8'), before)
-    } finally { off() }
+    } finally { off(); ask() }
   })
   await check('文件动作预取消与等待中取消', async () => {
     const destination = path.join(root, 'outside-cancelled.md')
+    const ask = main.ctx.on('tools/pre-execute', (exec, next) => exec.name === 'write' && exec.arguments.file_path === destination
+      ? { kind: 'ask', reason: 'Host fixture requires approval for this operation' } : next())
     let called = 0
     let entered
     let answer
@@ -319,7 +364,7 @@ try {
       assert.equal(result.isError, true)
       assert.equal(fs.existsSync(destination), false)
       assert.equal(events(main).filter(event => event.type === 'approval/decided').at(-1).data.outcome, 'cancelled')
-    } finally { off() }
+    } finally { off(); ask() }
   })
   await check('作者裁决预取消与迟到批准', async () => {
     const before = fs.readFileSync(chapter, 'utf8')
@@ -358,13 +403,13 @@ try {
     fs.symlinkSync(workspace, alias, 'junction')
     try {
       assert.equal((await registry.resolveByPath(alias)).id, registered.id)
-      const agent = await service('agents').create({ sessionId: 'loader-alias', meta: { cwd: alias } })
+      const agent = await createPresetAgent(service('agents'), { sessionId: 'loader-alias', meta: { cwd: alias } })
       try {
         const result = await execute(agent.agent, 'novel_select_book', { bookId: 'loader-book' })
         assert.equal(result.value.ok, true, JSON.stringify(result))
       } finally { await agent.dispose() }
     } finally { fs.unlinkSync(alias) }
-    await assert.rejects(service('agents').create({ sessionId: 'loader-relative', meta: { cwd: 'relative/path' } }))
+    await assert.rejects(createPresetAgent(service('agents'), { sessionId: 'loader-relative', meta: { cwd: 'relative/path' } }))
     const unowned = path.join(root, 'unowned')
     fs.mkdirSync(unowned)
     assert.equal(await registry.resolveByPath(unowned), undefined)
@@ -424,23 +469,83 @@ try {
       assert.equal(bundle.currentWorkspaceRoot(), fs.realpathSync.native(next))
     }
   })
+  await check('写作能力停用与技能依赖中断期间即时撤销', async () => {
+    const presetsModule = await import(host === undefined ? '@deepseek-ai/dsh-agent-preset-registry' : pathToFileURL(host.entry('@deepseek-ai/dsh-agent-preset-registry')).href)
+    const mount = presetsModule.livePresetMounts(ctx.fiber).find(item => item.presetId === 'scriptor')
+    const writingEntry = [...mount.tree.entries()].find(item => item.options.id === 'scriptor-agent')
+    const assertInactive = async () => {
+      assert.equal(service('agentPresets').serviceFor(main, 'webnovelWriting'), undefined)
+      assert.deepEqual(schemas(main), [])
+      const prompt = await presentation(main)
+      assert.equal(prompt.persona.some(section => section.text.includes('写作工作台')), false)
+      assert.deepEqual(prompt.status, [])
+      const rejected = await execute(main, 'novel_select_book', { bookId: 'loader-book' })
+      assert.equal(rejected.isError, true)
+      assert.match(JSON.stringify(rejected), /UNKNOWN_TOOL/)
+      const before = fs.readFileSync(chapter, 'utf8')
+      assert.equal((await execute(main, 'write', { file_path: chapter, content: '不能绕过保护' })).isError, true)
+      assert.equal(fs.readFileSync(chapter, 'utf8'), before)
+    }
+    try {
+      await writingEntry.update({ disabled: true }, false, true)
+      await mount.tree.await()
+      await assertInactive()
+    } finally {
+      await writingEntry.update({ disabled: false }, false, true)
+      await mount.tree.await()
+    }
+    assert.equal(schemas(main).length, 31)
+    try { await toggle('skills', true); await assertInactive() }
+    finally { await toggle('skills', false) }
+    assert.equal(schemas(main).length, 31)
+  })
+  await check('空白切换与同名预设代际保持隔离', async () => {
+    const blank = await createPresetAgent(service('agents'), { sessionId: 'preset-switch', meta: { cwd: workspace } }, 'standard')
+    const presets = service('agentPresets')
+    const declaration = entry('preset-scriptor')
+    const original = structuredClone(declaration.options.config)
+    let newer
+    try {
+      assert.deepEqual(schemas(blank.agent), [])
+      await presets.select(blank.agent, 'scriptor')
+      assert.equal(schemas(blank.agent).length, 31)
+      await presets.select(blank.agent, 'standard')
+      assert.deepEqual(schemas(blank.agent), [])
+      assert.equal((await presentation(blank.agent)).status.length, 0)
+      const originalCapability = presets.serviceFor(main, 'webnovelWriting')
+      await declaration.update({ config: { ...original, description: '同 ID 的新代际' } }, false, true)
+      await service('loader').await()
+      newer = await createPresetAgent(service('agents'), { sessionId: 'preset-new-revision', meta: { cwd: workspace } })
+      assert.notEqual(presets.serviceFor(newer.agent, 'webnovelWriting'), originalCapability)
+      assert.equal(presets.serviceFor(main, 'webnovelWriting'), originalCapability)
+      assert.equal(schemas(main).length, 31)
+      assert.equal(schemas(newer.agent).length, 31)
+      assert.deepEqual(schemas(blank.agent), [])
+    } finally {
+      await newer?.dispose()
+      await declaration.update({ config: original }, false, true)
+      await service('loader').await()
+      await blank.dispose()
+    }
+    assert.equal(schemas(main).length, 31)
+  })
   await check('原生文件工具对子 Agent 的边界', async () => {
     const denied = await execute(child, 'write', { file_path: chapter, content: '不应覆盖定稿' })
     assert.equal(denied.isError, true)
     const outside = path.join(root, 'child-outside.md')
-    const rejected = await withTurn(child, () => execute(child, 'write', { file_path: outside, content: '不应获批' }))
-    assert.equal(rejected.isError, true)
-    assert.equal(fs.existsSync(outside), false)
+    const ordinary = await withTurn(child, () => execute(child, 'write', { file_path: outside, content: '普通文件由宿主管理' }))
+    assert.equal(ordinary.isError, false)
+    assert.equal(fs.readFileSync(outside, 'utf8'), '普通文件由宿主管理')
     const read = await execute(child, 'read', { file_path: chapter })
     assert.equal(read.isError, false, JSON.stringify(read))
-    report.nativeFileBoundary = { sourceWriteDenied: true, childApprovalRejected: true, sourceReadStillVisible: true, sandboxBackend: 'fs-local (no OS sandbox)' }
+    report.nativeFileBoundary = { sourceWriteDenied: true, ordinaryFileDelegated: true, sourceReadStillVisible: true, sandboxBackend: 'fs-local (no OS sandbox)' }
   })
   await check('工具服务重启后重新装机', async () => {
     await toggle('tools', true)
     assert.equal(service('agents').list().length, 0)
     await toggle('tools', false)
-    const fresh = await service('agents').create({ sessionId: 'loader-after-tools', meta: { cwd: workspace } })
-    const delegated = await fresh.agent.ctx.get('agents').create({ parentAgent: fresh.agent, sessionId: 'loader-after-tools-child', meta: { cwd: workspace, origin: 'subagent' } })
+    const fresh = await createPresetAgent(service('agents'), { sessionId: 'loader-after-tools', meta: { cwd: workspace } })
+    const delegated = await createPresetAgent(fresh.agent.ctx.get('agents'), { parentAgent: fresh.agent, sessionId: 'loader-after-tools-child', meta: { cwd: workspace, origin: 'subagent' } })
     try {
       assert.equal(schemas(fresh.agent).length, 31)
       assert.deepEqual(schemas(delegated.agent), [])
@@ -507,7 +612,7 @@ try {
       authorQuestions++
       return { answers: request.questions.map(question => ({ id: question.id, selected: ['退回'] })) }
     })
-    const previous = await service('agents').create({ sessionId: 'loader-native-resume', meta: { cwd: workspace }, agentOptions: options })
+    const previous = await createPresetAgent(service('agents'), { sessionId: 'loader-native-resume', meta: { cwd: workspace }, agentOptions: options })
     await completeTurn(ctx, previous.agent, '继续写《测试书》，保留原生上下文标记。')
     assert.equal(authorQuestions, 1)
     assert.equal(adapter.requests.length, 3)
@@ -527,7 +632,7 @@ try {
     const restoredHost = await settingsProfile.start('webnovel-native-resume')
     try {
       restoredHost.get('llm').registerAdapter(['loader-native'], adapter)
-      const restored = await restoredHost.get('agents').resume({ resumeSessionId: 'loader-native-resume', agentOptions: options })
+      const restored = await resumePresetAgent(restoredHost.get('agents'), { resumeSessionId: 'loader-native-resume', agentOptions: options })
       await completeTurn(restoredHost, restored.agent, '继续')
       assert.equal(adapter.requests.length, 4)
       const history = JSON.stringify(adapter.requests.at(-1).messages)

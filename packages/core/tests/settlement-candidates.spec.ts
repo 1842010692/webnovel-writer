@@ -13,6 +13,7 @@ import {
   planSettlement,
   seedMinDesign,
   writeCandidate,
+  writeBookMemory,
 } from '../src/index'
 
 const roots: string[] = []
@@ -75,6 +76,27 @@ const 记忆候选 = '# 本书层记忆候选\n\n## 文风\n### 克制叙述\n�
 const 章摘要候选 = '主角在城门盘问中发现异状。章末状态：主角在城门，正要进城，异响未解。'
 
 describe('沉淀候选经 novel_prepare_pack 预校验(A2)', () => {
+  it('记忆更新明确提供旧文，准备后改变目标则拒绝沉淀', () => {
+    const root = mkDir('webnovel-memory-pack-')
+    confirmWithHard(root)
+    expect(writeBookMemory(root, { 名称: '克制叙述', 类: '文风', 描述: '旧规则', 正文: '少解释。', 来源: '对谈', 裁决记录: '确认' }).ok).toBe(true)
+    const file = path.join(root, '本书记忆/克制叙述.md'), original = fs.readFileSync(file, 'utf8')
+    const candidate = '## 文风\n### 克制叙述\n操作：更新\n状态：候选\n描述：保留规则并补充例外\n少解释，但关键因果可以说明。\n'
+    expect(preparePack(root, key, { 记忆候选: candidate })).toMatchObject({ ok: false, reason: expect.stringContaining('完整原文') })
+    expect(preparePack(root, key, { 记忆候选: candidate, 记忆原文: { 克制叙述: original } }).ok).toBe(true)
+    const plan = () => planSettlement(root, path.join(root, PKG), { 章节: key, 批准: true, 裁决记录: '批准' }, key)
+    const result = plan()
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const updatedMemory = parseDocument(result.ops.find(op => op.relPath === '本书记忆/克制叙述.md')!.content)
+    expect(updatedMemory.ok && updatedMemory.data.fields['描述']).toBe('保留规则并补充例外')
+    expect(result.ops.find(op => op.relPath === '本书记忆/克制叙述.md')?.content).toContain('少解释，但关键因果可以说明')
+    expect(result.ops.find(op => op.relPath === '本书记忆/克制叙述.md')?.content).not.toContain('操作：更新')
+    fs.appendFileSync(file, '\n作者后来补充的条件。\n')
+    expect(plan()).toMatchObject({ ok: false, reason: expect.stringContaining('原文已变化') })
+    expect(fs.readFileSync(file, 'utf8')).toContain('作者后来补充的条件')
+    expect(preparePack(root, key, { 记忆候选: candidate, 记忆原文: { 克制叙述: original } })).toMatchObject({ ok: false })
+  })
   it('缺 计划来源 的账本变更 → ok:false 且 reason 含解析器原话,包目录无变化', () => {
     const root = mkDir('webnovel-cand-a2-')
     confirmWithHard(root)

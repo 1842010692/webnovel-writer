@@ -157,6 +157,59 @@ function withTempDir(fn) {
   try { return fn(dir) } finally { fs.rmSync(dir, { recursive: true, force: true }) }
 }
 
+test('output guard refuses repository data before reading inputs or deleting files', () => {
+  withTempDir(directory => {
+    const repo = path.join(directory, 'repo')
+    for (const name of ['docs/user', 'site', '.git', '.tmp', '.tmp-backup']) {
+      fs.mkdirSync(path.join(repo, name), { recursive: true })
+      fs.writeFileSync(path.join(repo, name, 'keep'), name)
+    }
+    const targets = [repo, directory, ...['docs/user', 'site', '.git', '.tmp', '.tmp-backup', 'docs/new-output'].map(name => path.join(repo, name))]
+    if (process.platform === 'win32') targets.push(repo.toUpperCase(), path.join(repo, '.GIT'))
+    for (const out of targets) {
+      assert.throws(() => buildSite({ root: repo, out }), /Unsafe Pages output/, out)
+      for (const name of ['docs/user', 'site', '.git', '.tmp', '.tmp-backup']) {
+        assert.equal(fs.readFileSync(path.join(repo, name, 'keep'), 'utf8'), name)
+      }
+    }
+    // A custom input root must not allow deletion of the generator's own inputs.
+    assert.throws(() => buildSite({ root: repo, out: path.join(root, 'site') }), /Unsafe Pages output/)
+  })
+})
+
+test('output guard resolves links and nonexistent tails before applying the temp exception', () => {
+  withTempDir(directory => {
+    const repo = path.join(directory, 'repo')
+    fs.mkdirSync(path.join(repo, '.tmp'), { recursive: true })
+    fs.mkdirSync(path.join(repo, 'site'))
+    const link = path.join(repo, '.tmp', 'source-link')
+    fs.symlinkSync(path.join(repo, 'site'), link, process.platform === 'win32' ? 'junction' : 'dir')
+    const alias = path.join(directory, 'repo-alias')
+    fs.symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir')
+    for (const out of [link, path.join(link, 'new'), alias, path.join(alias, 'site')]) {
+      assert.throws(() => buildSite({ root: repo, out }), /Unsafe Pages output/, out)
+    }
+    assert.ok(fs.lstatSync(link).isSymbolicLink())
+    assert.ok(fs.existsSync(path.join(repo, 'site')))
+  })
+})
+
+test('dedicated repository temp output can be built and rebuilt', () => {
+  fs.mkdirSync(path.join(root, '.tmp'), { recursive: true })
+  const directory = fs.mkdtempSync(path.join(root, '.tmp', 'pages-output-'))
+  const out = path.join(directory, 'not-created', 'pages')
+  try {
+    buildSite({ root, out })
+    fs.writeFileSync(path.join(out, 'obsolete'), 'old output')
+    buildSite({ root, out })
+    assert.ok(fs.existsSync(path.join(out, 'index.html')))
+    assert.ok(!fs.existsSync(path.join(out, 'obsolete')))
+  } finally {
+    assert.ok(path.relative(path.join(root, '.tmp'), fs.realpathSync.native(directory)).startsWith('pages-output-'))
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 function listFiles(directory) {
   const files = []
   const walk = current => {
@@ -198,7 +251,9 @@ test('site build renders every guide and keeps links inside the artifact', () =>
       assert.ok(files.includes(required), `missing ${required}`)
     }
     const home = fs.readFileSync(path.join(out, 'index.html'), 'utf8')
-    assert.match(home, /@linfengqaqtat\/dsh-scriptor@8\.2\.0/)
+    const version = JSON.parse(fs.readFileSync(path.join(root, 'packages/bundle/package.json'), 'utf8')).version
+    assert.ok(home.includes(`@linfengqaqtat/dsh-scriptor@${version}`), 'home installs the current package version')
+    assert.ok(home.includes(`/releases/tag/scriptor-v${version}`), 'home links to the matching release')
     assert.match(home, /docs\/media\/intro\.mp4/)
     assert.doesNotMatch(home, /<(?:script|link|img|video|source|iframe)\b[^>]*\s(?:src|href)="https?:/i, 'home page must not load third-party resources')
     const install = fs.readFileSync(path.join(out, 'docs/install.html'), 'utf8')

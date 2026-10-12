@@ -85,12 +85,12 @@ export type InterpretedAnswer =
   | { readonly ok: false; readonly reason: string }
 
 export function interpretAnswer(kind: IrreversibleKind, answer: AskAnswer | undefined): InterpretedAnswer {
-  if (!answer) return { ok: false, reason: '缺答案,拒绝(fail-closed)' }
-  if (answer.id !== kind) return { ok: false, reason: '答案 id 与种类不匹配,拒绝' }
+  if (!answer) return { ok: false, reason: '缺答案，拒绝(fail-closed)' }
+  if (answer.id !== kind) return { ok: false, reason: '答案 id 与种类不匹配，拒绝' }
   const selected = answer.selected
-  if (!Array.isArray(selected) || selected.length !== 1) return { ok: false, reason: '答案缺失或非单一选项,拒绝' }
+  if (!Array.isArray(selected) || selected.length !== 1) return { ok: false, reason: '答案缺失或非单一选项，拒绝' }
   const label = selected[0]
   if (label === APPROVE_LABEL) return { ok: true, 决定: kind === '规则来源声明' ? '已确认' : '已批准' }
   if (label === REJECT_LABEL) return { ok: true, 决定: '已退回' }
-  return { ok: false, reason: `答案「${String(label)}」不在提供选项内,拒绝` }
+  return { ok: false, reason: `答案「${String(label)}」不在提供选项内，拒绝` }
 }

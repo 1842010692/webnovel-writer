@@ -142,9 +142,14 @@ const ICONS = {
   loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
 }
 
-function actionButton(id: string, action: string, icon: keyof typeof ICONS, tip: string, extra = ''): string {
+/** 转义写入 HTML 属性的值；id、提示文字都可能来自请求内容。 */
+export function escapeAttr(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+export function actionButton(id: string, action: string, icon: keyof typeof ICONS, tip: string, extra = ''): string {
   const label = tip.split(' · ')[0] ?? tip
-  return `<button type="button" class="cm-collab-btn ${extra}" data-collab-id="${id}" data-collab-action="${action}" aria-label="${label}" data-tip="${tip}">${iconSvg(icon)}</button>`
+  return `<button type="button" class="cm-collab-btn ${escapeAttr(extra)}" data-collab-id="${escapeAttr(id)}" data-collab-action="${escapeAttr(action)}" aria-label="${escapeAttr(label)}" data-tip="${escapeAttr(tip)}">${iconSvg(icon)}</button>`
 }
 
 function actionsHtml(item: SuggestionItem | GhostItem): string {
@@ -186,7 +191,7 @@ class ActionsWidget extends WidgetType {
     const node = document.createElement('span')
     node.className = 'cm-collab-actions'
     node.setAttribute('role', 'group')
-    node.setAttribute('aria-label', '主 Agent 建议')
+    node.setAttribute('aria-label', '主控建议')
     node.innerHTML = actionsHtml(this.item)
     return node
   }
@@ -236,10 +241,10 @@ class PendingWidget extends WidgetType {
     node.className = 'cm-collab-pending-chip is-' + this.item.status
     const label = INTENT_LABEL[this.item.intent]
     const statusLabel = this.item.status === 'queued' ? '排队中' : this.item.status === 'sending' ? '正在发送' : '处理中'
-    const tip = this.item.status === 'queued' ? `排队中：主 Agent 处理完上一条后就会${label}` : this.item.status === 'sending' ? '正在交给主 Agent' : `主 Agent 正在${label}`
+    const tip = this.item.status === 'queued' ? `排队中：主控处理完上一条后就会${label}` : this.item.status === 'sending' ? '正在交给主控' : `主控正在${label}`
     node.setAttribute('role', 'status')
     node.setAttribute('aria-label', statusLabel)
-    node.innerHTML = `<span class="cm-collab-spinner" data-tip="${tip}${this.item.touched ? ' · 这段原文已被你改动' : ''}">${iconSvg('loader')}</span>` + actionButton(this.item.id, 'cancel', 'x', '取消这次请求', 'cm-collab-cancel')
+    node.innerHTML = `<span class="cm-collab-spinner" data-tip="${escapeAttr(tip + (this.item.touched ? ' · 这段原文已被你改动' : ''))}">${iconSvg('loader')}</span>` + actionButton(this.item.id, 'cancel', 'x', '取消这次请求', 'cm-collab-cancel')
     return node
   }
   ignoreEvent(): boolean { return true }
@@ -324,7 +329,7 @@ export function resolveAsk(state: EditorState, intent: Intent, range?: { from: n
   }
   const text = state.sliceDoc(from, to)
   if (intent !== 'continue' && !text.trim()) return { ok: false, message: '先选中文字，或把光标放进一段正文' }
-  if (textLength(text) > SELECTION_LIMIT) return { ok: false, message: '选区超过 8000 字，请缩短后再交给主 Agent' }
+  if (textLength(text) > SELECTION_LIMIT) return { ok: false, message: '选区超过 8000 字，请缩短后再交给主控' }
   if (requestBlocked(state, from, to)) return { ok: false, message: '这段已经有一条在处理的请求' }
   return {
     ok: true, from, to, text, line: state.doc.lineAt(from).number,
@@ -387,7 +392,7 @@ export function planReply(state: EditorState, requestId: string, reply: EditorRe
   const item = findItem(state, requestId)
   if (!item || item.kind !== 'pending') return { status: 'expired', effects: [] }
   if (reply.kind === 'none') {
-    return { status: 'none', message: reply.note || '主 Agent 认为无需改动', effects: [removeItems.of([requestId])] }
+    return { status: 'none', message: reply.note || '主控认为无需改动', effects: [removeItems.of([requestId])] }
   }
   if (reply.kind === 'replace') {
     const suggestion: SuggestionItem = {

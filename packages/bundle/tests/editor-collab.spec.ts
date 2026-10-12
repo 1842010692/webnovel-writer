@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EditorState, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { history, redo, undo } from '@codemirror/commands'
-import { addItems, adoptedField, collab, collabField, collapsedPending, dismissItem, acceptItem, expiredGhosts, findItem, noteAdopted, requestBlocked, resolveAsk, type CollabItem, type PendingItem } from '../src/client/editor/collab'
+import { actionButton, addItems, escapeAttr, adoptedField, collab, collabField, collapsedPending, dismissItem, acceptItem, expiredGhosts, findItem, noteAdopted, requestBlocked, resolveAsk, type CollabItem, type PendingItem } from '../src/client/editor/collab'
 import { readableDiff } from '../src/client/editor/diff'
 import { EditorMemory } from '../src/client/editor/memory'
 import { createEditorRequests, type EditorAsk, type EditorSurface } from '../src/client/editor/requests'
@@ -536,3 +536,14 @@ function registry(client: ReturnType<typeof createEditorRequests>) {
     shown: Map<string, string>
   }
 }
+
+describe('collab 按钮 HTML 转义（PR-15）', () => {
+  it('id 与提示文字中的特殊字符被转义，不会生成新标签或属性', () => {
+    const html = actionButton('a"><img src=x onerror=alert(1)>', 'accept', 'check', `接受 '引号' & <b>`)
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('<b>')
+    expect(html).toContain('data-collab-id="a&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"')
+    expect(html).toContain('data-tip="接受 &#39;引号&#39; &amp; &lt;b&gt;"')
+    expect(escapeAttr('普通文字')).toBe('普通文字')
+  })
+})

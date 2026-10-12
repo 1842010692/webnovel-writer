@@ -16,13 +16,13 @@ export function isKnownSchemaVersion(version: number): boolean {
 /** 解析机器态 JSON:非法 / 缺版本 / 未知或不匹配一律 parse-error,不静默接受。 */
 export function parseMachineJson(text: string, expectedVersion: number): ReadResult<MachineRecord> {
   if (!isKnownSchemaVersion(expectedVersion)) {
-    return { ok: false, reason: 'parse-error', detail: `未知 schemaVersion:${expectedVersion}(B8)` }
+    return { ok: false, reason: 'parse-error', detail: `未知 schemaVersion:${expectedVersion}。请升级插件后再打开这本书` }
   }
   let parsed: unknown
   try {
     parsed = JSON.parse(text) as unknown
   } catch (err) {
-    return { ok: false, reason: 'parse-error', detail: `JSON 解析失败:${String(err)}` }
+    return { ok: false, reason: 'parse-error', detail: `JSON 解析失败：${err instanceof Error ? err.message : String(err)}` }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, reason: 'parse-error', detail: '机器态 JSON 顶层必须是对象' }
@@ -33,13 +33,13 @@ export function parseMachineJson(text: string, expectedVersion: number): ReadRes
   }
   const ver = obj['schemaVersion']
   if (typeof ver !== 'number' || !Number.isInteger(ver)) {
-    return { ok: false, reason: 'parse-error', detail: `schemaVersion 非法:${String(ver)}` }
+    return { ok: false, reason: 'parse-error', detail: `schemaVersion 非法：${String(ver)}` }
   }
   if (!isKnownSchemaVersion(ver)) {
-    return { ok: false, reason: 'parse-error', detail: `未知 schemaVersion:${ver}(B8)` }
+    return { ok: false, reason: 'parse-error', detail: `未知 schemaVersion:${ver}。请升级插件后再打开这本书` }
   }
   if (ver !== expectedVersion) {
-    return { ok: false, reason: 'parse-error', detail: `schemaVersion 不匹配:期望 ${expectedVersion},实际 ${ver}` }
+    return { ok: false, reason: 'parse-error', detail: `schemaVersion 不匹配：期望 ${expectedVersion},实际 ${ver}` }
   }
   return { ok: true, data: obj as MachineRecord }
 }
@@ -47,7 +47,7 @@ export function parseMachineJson(text: string, expectedVersion: number): ReadRes
 /** 序列化:始终写入 schemaVersion。 */
 export function serializeMachineJson(data: Readonly<Record<string, unknown>>, version: number): string {
   if (!isKnownSchemaVersion(version)) {
-    throw new Error(`未知 schemaVersion:${version}(B8)`)
+    throw new Error(`未知 schemaVersion:${version}。请升级插件后再打开这本书`)
   }
   const { schemaVersion: _ignored, ...rest } = data
   return JSON.stringify({ schemaVersion: version, ...rest })

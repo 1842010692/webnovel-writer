@@ -18,9 +18,12 @@ import * as path from 'node:path'
 import * as fs from 'node:fs'
 import {
   gateFileAccess,
+  assertWritableTargets,
   gateWriteDraft,
   isInsidePath,
   canonicalizePath,
+  containingBookRoot,
+  isFullyQualifiedPath,
   isMutatingFileTool,
   extractToolPath,
   resolveInsideBook,
@@ -36,6 +39,7 @@ export interface PreToolExec {
   readonly name?: string
   readonly arguments?: unknown
   readonly agent?: { readonly id: string }
+  readonly signal?: AbortSignal
 }
 
 /** 与真实 PreToolDecision 的允许/拒绝/确认交集。 */
@@ -49,6 +53,9 @@ export interface GateDeps {
   readonly bookRootForAbs: (abs: string) => string | undefined
   /** 工作范围根(用于书房分区判定);未装机 undefined。 */
   readonly workspaceRoot: () => string | undefined
+  /** Resolve through the executing session's actual filesystem backend. */
+  readonly resolveTarget?: (target: string, exec: PreToolExec) => Promise<string | undefined>
+  readonly managedWorkspaces?: () => readonly string[]
 }
 
 /**
@@ -73,18 +80,22 @@ export function attachFileGateToAgent(
       const toolCall = normalizeToolCall(exec)
       if (toolCall === null) return next()
       const target = extractToolPath(toolCall)
-      if (target !== null) {
-        const ws = deps.workspaceRoot()
-        const absolute = ws ? canonicalizePath(path.resolve(ws, target)) : undefined
-        if (ws && absolute && inside(path.join(ws, '书房/参考书'), absolute) && /(?:^|[\\/])\.(?:analysis|webnovel)(?:[\\/]|$)/i.test(absolute)) {
-          return { kind: 'deny', reason: '受管原文与机器状态仅供参考工具读取，请使用拆书或定点证据回查' }
-        }
+      if (target === null) return next() // Native schemas own malformed arguments.
+      let absolute: string | undefined
+      try {
+        absolute = deps.resolveTarget ? await deps.resolveTarget(target, exec)
+          : isFullyQualifiedPath(target) ? canonicalizePath(target)
+            : deps.workspaceRoot() ? canonicalizePath(path.resolve(deps.workspaceRoot()!, target)) : undefined
+      } catch (error) {
+        return { kind: 'deny', reason: error instanceof Error ? error.message : String(error) }
+      }
+      if (!absolute || !isFullyQualifiedPath(absolute)) return next()
+      if (managedRoots(deps).some(root => inside(path.join(root, '书房/参考书'), absolute!))
+        && /(?:^|[\\/])\.(?:analysis|webnovel)(?:[\\/]|$)/i.test(absolute)) {
+        return { kind: 'deny', reason: '受管原文与机器状态仅供参考工具读取，请使用拆书或定点证据回查' }
       }
       if (!isMutatingFileTool(toolCall)) return next()
-      if (target === null) {
-        return Promise.resolve({ kind: 'deny', reason: '文件工具缺少可解析路径,拒绝写入' } as PreToolDecisionLike as never)
-      }
-      const decision = decideTargetForFile(target, deps)
+      const decision = decideTargetForFile(absolute, deps)
       if (decision.kind !== 'allow') {
         return Promise.resolve(decision as PreToolDecisionLike as never)
       }
@@ -112,34 +123,30 @@ function normalizeToolCall(exec: PreToolExec): ToolCall | null {
  */
 export function decideTargetForFile(target: string, deps: GateDeps): PreToolDecision {
   const ws = deps.workspaceRoot()
-  if (ws === undefined) return { kind: 'deny', reason: '工作范围未就绪,拒绝写入' }
-
   const parsed = parseBookPathInput(target)
-  if (parsed.kind === 'bare-relative') {
-    return { kind: 'deny', reason: '裸相对路径拒绝:请携带 书id:仓内相对路径 或绝对路径(PRD §4.7)' }
-  }
-
-  if (parsed.kind === 'absolute') {
-    const abs = parsed.abs
+  if (parsed.kind !== 'book-relative') {
+    const abs = parsed.kind === 'absolute' ? parsed.abs : ws ? path.resolve(ws, target) : undefined
+    if (abs === undefined) return { kind: 'allow' }
+    const bookRoot = deps.bookRootForAbs(abs) ?? containingBookRoot(abs)
     // 书房分区:以 工作范围/书房 为界可写(A2b)
-    if (inside(path.join(ws, '书房'), abs)) {
-      if (inside(path.join(ws, '书房/参考书'), abs)) return { kind: 'deny', reason: '参考库由拆书工具维护；修改机制请在书房编辑器保存版本' }
-      if (fs.existsSync(path.join(ws, '书房/作品契约/契约.md'))) return { kind: 'deny', reason: '共享目录与书仓重叠，拒绝共享写入豁免' }
-      return { kind: 'allow' }
+    for (const root of managedRoots(deps)) {
+      if (!inside(path.join(root, '书房'), abs)) continue
+      if (inside(path.join(root, '书房/参考书'), abs)) return { kind: 'deny', reason: '参考库由拆书工具维护；修改机制请在书房编辑器保存版本' }
+      if (fs.existsSync(path.join(root, '书房/作品契约/契约.md'))) return { kind: 'deny', reason: '共享目录与书仓重叠，拒绝共享写入豁免' }
     }
-    // 书仓内:找所在书仓再判
-    const bookRoot = deps.bookRootForAbs(abs)
-    if (bookRoot === undefined) {
-      // 范围外写入:不是已知书仓也不是书房 → ask (N10)
-      return { kind: 'ask', reason: `目标路径在当前工作台书仓/书房范围外（${abs}），需确认是否写入` }
-    }
+    if (bookRoot === undefined) return { kind: 'allow' }
     return gateBookRoot(bookRoot, abs)
   }
 
   // book-relative: 书id → 书仓根 → 书仓内分区
   const bookRoot = deps.bookRootOfId(parsed.bookId)
-  if (bookRoot === undefined) return { kind: 'deny', reason: `未知书目:${parsed.bookId}(书id 须已在书架扫描中发现)` }
+  if (bookRoot === undefined) return { kind: 'deny', reason: `未知书目：${parsed.bookId}。书id 必须已在书架扫描中发现；请先调用 novel_select_book 核对书id` }
   return gateBookRoot(bookRoot, parsed.rel)
+}
+
+function managedRoots(deps: GateDeps): string[] {
+  const root = deps.workspaceRoot()
+  return [...new Set([...(root ? [root] : []), ...deps.managedWorkspaces?.() ?? []])].filter(isFullyQualifiedPath)
 }
 
 /** 书仓内分区判定:草稿区可写(只留路径形状校验,R1 落码后细纲/材料状态改播报);定稿/构想只读;真源仅写入器。 */
@@ -148,9 +155,11 @@ function gateBookRoot(bookRoot: string, target: string): PreToolDecision {
   if (!access.allow) return { kind: 'deny', reason: access.reason }
   // 草稿区路径形状校验(R1 落码:未确认细纲/材料包非可写改为播报,不再拒绝)
   const resolved = resolveInsideBook(bookRoot, target)
-  if (resolved.ok) {
-    const draft = gateWriteDraft(bookRoot, resolved.relPath)
-    if (!draft.allow) return { kind: 'deny', reason: draft.reason }
+  if (!resolved.ok) return { kind: 'deny', reason: resolved.reason }
+  const draft = gateWriteDraft(bookRoot, resolved.relPath)
+  if (!draft.allow) return { kind: 'deny', reason: draft.reason }
+  try { assertWritableTargets(bookRoot, [resolved.relPath]) } catch (error) {
+    return { kind: 'deny', reason: error instanceof Error ? error.message : String(error) }
   }
   return { kind: 'allow' }
 }

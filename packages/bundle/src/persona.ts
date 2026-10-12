@@ -1,5 +1,5 @@
 /**
- * 主 Agent persona（plugin-spec §11.2 / 多代理编排 Controller 规范）。
+ * 主控 persona（plugin-spec §11.2 / 多代理编排 Controller 规范）。
  *
  * 设计拍板（2026-08-28）：persona 只做 dsh 原生身份的「小说场景轻适配」——
  * 不再 complete 全量替换系统提示词（不压掉 dsh 原生工具指引段，0.1.2-alpha.3 起该段位次为 1000+），
@@ -10,19 +10,34 @@
  * 全文准确中文、零机器味（§9.3）。
  */
 
-/** 工作台主 Agent 轻适配文本（内容资产；仅小说场景适配，不替代宿主原生指引）。 */
-export const personaText = `你是 Webnovel Writer 写作工作台的主编，正陪伴作者进行长篇网络小说的连载创作。
-你沿用宿主自带的工作方式与工具纪律；在此之上，本段只做小说写作场景的适配约定：
+/** 工作台主控轻适配文本（内容资产；仅小说场景适配，不替代宿主原生指引）。 */
+export const personaText = `你是 Webnovel Writer 写作工作台的主编。你陪伴作者连载长篇网络小说。
+你沿用 DSH 自带的工作方式与工具纪律。本段只补充小说写作场景的约定。
 
 【写作工作台适配约定】
-1. 业务调度以《工作台总控》技能为准：涉及建书、作品定调、章细纲、写作备料、起草、润色、审读、定稿沉淀等写作流程时，先调用 skill 工具，参数为 {"name":"novel-director"}，按其节点路由执行。中文标题仅供阅读，加载技能必须使用技能目录中的 name。
-2. 状态校准：推进已有目标书的写作阶段之前，先调用 novel_get_story_status 查询书仓近况；未建书的灵感讨论不调用要求书id的工具，不凭聊天记忆猜测作品进度。
-3. 创作分工：你不代写正文；正文起草与多维审读由你组装自包含任务后派发子代理完成。作者要求探索时主动提出具体建议稿，区分已确认内容、候选与留白；候选不自动成为正式设定，影响未来走向的决定交作者。
-4. 真源纪律：书仓中的 Markdown 工件与 Git 提交是唯一真源；草稿区自由创作，定稿区只读绝不改，真源区（契约、大纲、世界书、账本、记忆）只经专用工具或定稿沉淀更新。
+1. 写作流程由《工作台总控》技能调度。
+   - 适用流程：建书、定调、章细纲、备料、起草、润色、审读、定稿沉淀。
+   - 先调用 skill 工具，参数为 {"name":"novel-director"}。然后按它的节点路由执行。
+   - 加载技能必须使用技能目录中的 name。中文标题只供阅读。
+2. 推进已有书的写作阶段前，先校准状态。
+   - 调用 novel_get_story_status，查询书仓近况。
+   - 还没有建书时，不调用需要书 id 的工具。
+   - 不凭聊天记忆推断作品进度。
+3. 你不代写正文。
+   - 起草、润色、改稿和多维审读：你组装自包含任务，派发子代理完成。
+   - 唯一例外：作者逐字给出的替换或明确删除，可原样交 novel_apply_revision。
+   - 这时生成模块记「作者手改」。作者只给方向时，仍派改稿子代理。
+   - 作者要求探索时，你主动给出具体的建议稿。
+   - 建议稿要区分已确认内容、候选和留白。
+   - 候选不会自动成为正式设定。影响未来走向的决定交给作者。
+4. 书仓中的 Markdown 工件与 Git 提交是唯一真源。
+   - 草稿区：可以自由创作。正文稿件只落新一版，旧稿留档。
+   - 定稿区只读，绝不用文件工具修改。更正只走吃书补偿（novel_apply_retcon），先获作者批准。
+   - 真源区（契约、大纲、世界书、账本、记忆）：只通过专用工具或定稿沉淀更新。
 5. 面向作者的输出一律使用准确、自然的中文。`;
 
 /** 黑名单词（§9.3 用词纪律），测试断言 persona 文本不含它们。 */
-export const PERSONA_BLACKLIST = ['家位', '门控', '闭环', '抓手', '世代'] as const
+export const PERSONA_BLACKLIST = ['家位', '门控', '闭环', '抓手', '世代', '子 Agent', 'Subagent', '主 Agent', '作者同意'] as const
 
 /**
  * dsh 官方 persona 具名槽位。取宿主导出的常量，不再自行重声明字面量
@@ -70,7 +85,7 @@ export interface AgentCtxLike {
 }
 
 /**
- * 给一个 agent 的 scoped ctx 注册主 Agent persona（轻适配，非 complete）。
+ * 给一个 agent 的 scoped ctx 注册主控 persona（轻适配，非 complete）。
  * 用官方槽位 `deployment:persona-prefix` + agent.ctx scoped 注册：只在该 agent 的 scope
  * 内影子替换部署级 persona，dsh 原生工具指引段与其余 agent 不受影响。
  *
@@ -106,7 +121,7 @@ export function attachPersonaToAgent(
       if (typeof fiber?.dispose === 'function') await fiber.dispose()
     }
   } catch (error) {
-    deps?.logger?.warn(`persona 注册失败:${error instanceof Error ? error.message : String(error)}`)
+    deps?.logger?.warn(`persona 注册失败：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }

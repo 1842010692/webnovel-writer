@@ -27,12 +27,12 @@ function writeSettlementDecisionLocked(
     return { ok: false, reason: '待定稿包缺清单.json,无法回写裁决' }
   }
   const parsed = parseMachineJson(text, MACHINE_SCHEMA_VERSION)
-  if (!parsed.ok) return { ok: false, reason: `清单解析失败:${parsed.detail}` }
+  if (!parsed.ok) return { ok: false, reason: `清单解析失败：${parsed.detail}` }
   try {
     writeFileAtomic(bookRoot, rel, serializeMachineJson({ ...parsed.data, 裁决 }, MACHINE_SCHEMA_VERSION))
     return { ok: true }
   } catch (err) {
-    return { ok: false, reason: `清单裁决回写失败:${err instanceof Error ? err.message : String(err)}` }
+    return { ok: false, reason: `清单裁决回写失败：${err instanceof Error ? err.message : String(err)}` }
   }
 }
 

@@ -185,6 +185,7 @@ function saveAuthorDocumentInner(root: string, input: AuthorSaveInput): AuthorSa
     if (input.shared) {
       const referenceEdit = prepareReferenceAuthorEdit(root, posix, original, body)
       if (referenceEdit) { fields = referenceEdit.fields; operations.push(...referenceEdit.operations) }
+      if (/^作者记忆\/[^/]+\.md$/.test(posix) && posix !== '作者记忆/索引.md') fields['生成模块'] = '作者手改'
     }
     if (!input.shared) {
       const protocol = version === null ? initialVersion('作者手改') : bumpVersion(version, '作者手改', fields['来源快照'])

@@ -9,9 +9,9 @@
  *   临时文件天然同盘,异常回滚与残留清理也作用于同一目录。
  */
 
-import * as path from 'node:path'
 import { withBookLock, withBookLockAsync } from './lock'
 import { recoverTransactions, runTransaction, type OperationProvenance } from './transaction'
+import { relPathProblem } from './rel-path'
 
 export interface FileOp {
   readonly relPath: string
@@ -23,13 +23,9 @@ export interface AtomicWriteOptions {
 }
 
 function assertRelPath(relPath: string): void {
-  if (path.isAbsolute(relPath) || /^[a-zA-Z]:/.test(relPath)) {
-    throw new Error(`原子写拒绝绝对路径:「${relPath}」(B1/B2)`)
-  }
-  const segments = relPath.split(/[\\/]/)
-  if (segments.includes('..')) {
-    throw new Error(`原子写拒绝路径穿越:「${relPath}」(B1/B2)`)
-  }
+  const problem = relPathProblem(relPath)
+  if (problem === 'absolute') throw new Error(`原子写拒绝绝对路径：「${relPath}」。请改用书仓内的相对路径`)
+  if (problem === 'traversal') throw new Error(`原子写拒绝路径穿越：「${relPath}」含有 ..。请改用书仓内的相对路径`)
 }
 
 /** Acquire the write boundary and recover interrupted work before any reads. */
@@ -59,11 +55,11 @@ export function writeBatchAtomic(root: string, ops: readonly FileOp[], options: 
   for (const op of ops) assertRelPath(op.relPath)
   if (ops.length === 0) return
   withBookLock(root, () => {
-    recoverTransactions(root)
+    // runTransaction recovers first and blocks only targets of conflicting batches.
     try {
       runTransaction(root, ops, options)
     } catch (err) {
-      throw new Error(`原子写失败(B1):${String(err)}`)
+      throw new Error(`原子写失败：${err instanceof Error ? err.message : String(err)}`, { cause: err })
     }
   }, options.provenance === undefined
     ? { targets: ops.map((op) => op.relPath) }

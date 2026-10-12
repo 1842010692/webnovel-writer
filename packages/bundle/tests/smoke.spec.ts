@@ -49,6 +49,7 @@ describe('包冒烟', () => {
         return undefined
       },
       on: (e) => { agentCtxEvents.push(e) },
+      get: (name: string) => (name === 'agentPresets' ? { serviceFor: () => ({ mode: 'writing' }) } : undefined),
     })
     const fakeCtx = makeAgentCtx()
 

@@ -21,6 +21,15 @@ import type { ChapterKey } from '../derive/scan'
 import { lineDiff, type DiffLine } from './diff'
 import { followupReport, type FollowupReport } from './followup'
 import { bookWriter } from '../repo/atomic'
+import { loadProposal } from './proposal'
+
+/** 发现项影响真源时的统一回报（指出下一步工具）。 */
+/** 处置值非法时的报错：点名发现项，列出合法值和修正方法。 */
+function illegalDisposition(id: string, value: string): string {
+  return `发现项 ${id}：处置状态非法「${value}」；合法值：${处置状态列表.join('、')}；修正方法：把「处置」改成合法值之一`
+}
+
+const UPSTREAM_REASON = '须呈报上游：这条发现项影响真源设计，不能在改稿中落实。请用 novel_record_proposal 登记提案。再用 novel_resolve_proposal 呈报作者裁决'
 
 export interface RevisionPatch {
   readonly old: string
@@ -33,6 +42,7 @@ export interface ApplyRevisionInput {
   readonly 补丁?: RevisionPatch
   readonly 范围?: string
   readonly 改动说明?: string
+  readonly 提案编号?: string
   readonly 审核记录哈希?: string
   /** 默认 改稿;作者口述的一段替换传 作者手改(M1 design §3,计入同一改稿协议)。 */
   readonly 生成模块?: string
@@ -65,7 +75,33 @@ function checkRecord(record: ReviewRecord, actualHash: string, expectedHash?: st
 }
 
 function upstreamAllowed(disposition: 处置状态, changesDraft: boolean): boolean {
-  return !changesDraft && ['待处理', '作者保留', '已驳回', '无法判断'].includes(disposition)
+  return !changesDraft && ['待处理', '作者保留', '已驳回', '无法判断', '已转提案'].includes(disposition)
+}
+
+/**
+ * 「已转提案」只用于影响真源的发现项：改动说明必须引用一份已通过的提案（「提案 NNNN」）。
+ * 返回 undefined 表示可以记入。
+ */
+function forwardedNumber(explicit: string | undefined, note: string | undefined): string | undefined {
+  if (explicit !== undefined) return /^\d{4}$/.test(explicit) ? explicit : undefined
+  const mentions = [...(note ?? '').matchAll(/提案\s*(\d+)/g)]
+  return mentions.length === 1 && /^\d{4}$/.test(mentions[0]![1]!) ? mentions[0]![1] : undefined
+}
+
+function checkForwarded(bookRoot: string, key: Pick<ChapterKey, '卷' | '章' | '章名'>, id: string, scope: string | undefined, number: string | undefined): string | undefined {
+  if (!touchesTrueSource(scope)) return `发现项 ${id}：「已转提案」只用于影响真源的发现项；修正方法：改用已接受修改、已解决等处置`
+  if (number === undefined) return `发现项 ${id}：缺少提案编号或编号非法；修正方法：传四位数字的提案编号`
+  const loaded = loadProposal(bookRoot, number)
+  if (!loaded.ok) return `发现项 ${id}：${loaded.reason}；修正方法：先用 novel_record_proposal 登记提案`
+  const doc = parseDocument(loaded.text)
+  const status = doc.ok ? doc.data.fields['状态'] : undefined
+  if (status !== '已通过') return `发现项 ${id}：提案 ${number} 状态为「${String(status ?? '无法读取')}」，不是「已通过」；修正方法：先用 novel_resolve_proposal 呈报作者裁决，通过后再记「已转提案」`
+  const links = doc.ok ? doc.data.fields['关联发现项'] : undefined
+  if (!Array.isArray(links) || !links.some(link => link !== null && typeof link === 'object'
+    && link.卷 === key.卷 && link.章 === key.章 && link.章名 === key.章名 && link.发现项编号 === id)) {
+    return `发现项 ${id}：提案 ${number} 未关联本章这条发现项；修正方法：登记提案时填写关联发现项，并请作者裁决该提案`
+  }
+  return undefined
 }
 
 function touchesTrueSource(scope: string | undefined): boolean {
@@ -89,10 +125,10 @@ function applyRevisionLocked(
   key: Pick<ChapterKey, '卷' | '章' | '章名'>,
   input: ApplyRevisionInput,
 ): ApplyRevisionResult {
-  if (!(处置状态列表 as readonly string[]).includes(input.处置)) return { ok: false, reason: `处置状态非法:${input.处置}` }
-  if (touchesTrueSource(input.范围) && !upstreamAllowed(input.处置, input.补丁 !== undefined)) return { ok: false, reason: '须呈报上游' }
+  if (!(处置状态列表 as readonly string[]).includes(input.处置)) return { ok: false, reason: illegalDisposition(input.发现项编号, input.处置) }
+  if (touchesTrueSource(input.范围) && !upstreamAllowed(input.处置, input.补丁 !== undefined)) return { ok: false, reason: UPSTREAM_REASON }
   if (input.处置 === '待处理' && input.补丁 !== undefined) {
-    return { ok: false, reason: '处置为「待处理」不得带补丁——先给显式处置,或改为「已接受修改」' }
+    return { ok: false, reason: '处置为「待处理」不得带补丁——先给显式处置，或改为「已接受修改」' }
   }
 
   const snapshot = readReviewRecordForUpdate(bookRoot, key)
@@ -101,11 +137,16 @@ function applyRevisionLocked(
   const conflict = checkRecord(record, snapshot.hash, input.审核记录哈希)
   if (conflict !== undefined) return { ok: false, reason: conflict }
   const idx = record.问题.findIndex((p) => p.发现项编号 === input.发现项编号)
-  if (idx < 0) return { ok: false, reason: `发现项不存在:${input.发现项编号}` }
+  if (idx < 0) return { ok: false, reason: `发现项不存在：${input.发现项编号}` }
 
   const finding = record.问题[idx]!
   if ((touchesTrueSource(input.范围) || touchesTrueSource(finding.影响范围)) && !upstreamAllowed(input.处置, input.补丁 !== undefined)) {
-    return { ok: false, reason: '须呈报上游' }
+    return { ok: false, reason: UPSTREAM_REASON }
+  }
+  if (input.处置 === '已转提案') {
+    if (input.补丁 !== undefined) return { ok: false, reason: UPSTREAM_REASON }
+    const bad = checkForwarded(bookRoot, key, input.发现项编号, finding.影响范围, forwardedNumber(input.提案编号, input.改动说明))
+    if (bad !== undefined) return { ok: false, reason: bad }
   }
 
   let relPath: string | undefined
@@ -116,7 +157,7 @@ function applyRevisionLocked(
     const pending = findPendingReviewDraft(bookRoot, key)
     if (pending === null) return { ok: false, reason: '无待审稿' }
     const doc = parseDocument(pending.text)
-    if (!doc.ok) return { ok: false, reason: `待审稿解析失败:${doc.detail}` }
+    if (!doc.ok) return { ok: false, reason: `待审稿解析失败：${doc.detail}` }
     // 补丁只在正文上匹配;候选事实段原样带过,不当正文改
     const split = splitCandidateFacts(doc.data.body)
     const replaced = uniqueReplace(split.prose, input.补丁!.old, input.补丁!.new)
@@ -133,7 +174,7 @@ function applyRevisionLocked(
   }
 
   const 问题 = record.问题.map((p, i) => (
-    i === idx ? { ...p, 处置: input.处置, 处置状态: input.处置, ...(input.改动说明 === undefined ? {} : { 处置说明: input.改动说明 }) } : p
+    i === idx ? { ...p, 处置: input.处置, 处置状态: input.处置, ...(input.处置 === '已转提案' ? { 转交提案: { 提案编号: forwardedNumber(input.提案编号, input.改动说明)! } } : {}), ...(input.改动说明 === undefined ? {} : { 处置说明: input.改动说明 }) } : p
   ))
   const content = serializeReviewRecord({ ...record, 问题 })
   ops.push({ relPath: paths.审核记录(key.卷, key.章名), content })
@@ -155,6 +196,7 @@ export interface RevisionBatchDisposition {
   readonly 处置: 处置状态
   /** 子代理映射清单或作者口述的那一行改动说明。 */
   readonly 改动说明?: string
+  readonly 提案编号?: string
 }
 
 export interface ApplyRevisionBatchInput {
@@ -193,14 +235,21 @@ function applyRevisionBatchLocked(
   const byId = new Map(record.问题.map((p) => [p.发现项编号, p]))
   const seen = new Set<string>()
   for (const d of input.处置) {
-    if (seen.has(d.发现项编号)) return { ok: false, reason: `处置编号重复:${d.发现项编号}` }
+    if (seen.has(d.发现项编号)) return { ok: false, reason: `处置编号重复：${d.发现项编号}` }
     seen.add(d.发现项编号)
     if (!(处置状态列表 as readonly string[]).includes(d.处置)) {
-      return { ok: false, reason: `处置状态非法:${d.处置}` }
+      return { ok: false, reason: illegalDisposition(d.发现项编号, d.处置) }
     }
     const finding = byId.get(d.发现项编号)
-    if (finding === undefined) return { ok: false, reason: `发现项不存在:${d.发现项编号}` }
-    if (touchesTrueSource(finding.影响范围) && !upstreamAllowed(d.处置, input.新稿正文 !== undefined || input.候选事实 !== undefined)) return { ok: false, reason: '须呈报上游' }
+    if (finding === undefined) return { ok: false, reason: `发现项不存在：${d.发现项编号}` }
+    if (touchesTrueSource(finding.影响范围) && !upstreamAllowed(d.处置, input.新稿正文 !== undefined || input.候选事实 !== undefined)) {
+      return { ok: false, reason: `发现项 ${d.发现项编号}：${UPSTREAM_REASON}。修正方法：把这条移出本批，改用不带新稿和补丁的纯处置批。可记作者保留、已驳回、无法判断或已转提案` }
+    }
+    if (d.处置 === '已转提案') {
+      if (input.新稿正文 !== undefined || input.候选事实 !== undefined) return { ok: false, reason: `发现项 ${d.发现项编号}：${UPSTREAM_REASON}` }
+      const bad = checkForwarded(bookRoot, input, d.发现项编号, finding.影响范围, forwardedNumber(d.提案编号, d.改动说明))
+      if (bad !== undefined) return { ok: false, reason: bad }
+    }
   }
 
   const ops: FileOp[] = []
@@ -209,7 +258,7 @@ function applyRevisionBatchLocked(
     const pending = findPendingReviewDraft(bookRoot, key)
     if (pending === null) return { ok: false, reason: '无待审稿' }
     const doc = parseDocument(pending.text)
-    if (!doc.ok) return { ok: false, reason: `待审稿解析失败:${doc.detail}` }
+    if (!doc.ok) return { ok: false, reason: `待审稿解析失败：${doc.detail}` }
     const split = splitCandidateFacts(doc.data.body)
     const facts = input.候选事实 ?? split.facts
     const parent = extractVersionFields(doc.data.fields).版本
@@ -232,7 +281,7 @@ function applyRevisionBatchLocked(
   const 问题 = record.问题.map((p) => {
     const d = input.处置.find((x) => x.发现项编号 === p.发现项编号)
     if (d === undefined) return p
-    return { ...p, 处置: d.处置, 处置状态: d.处置, ...(d.改动说明 === undefined ? {} : { 处置说明: d.改动说明 }) }
+    return { ...p, 处置: d.处置, 处置状态: d.处置, ...(d.处置 === '已转提案' ? { 转交提案: { 提案编号: forwardedNumber(d.提案编号, d.改动说明)! } } : {}), ...(d.改动说明 === undefined ? {} : { 处置说明: d.改动说明 }) }
   })
   const content = serializeReviewRecord({ ...record, 问题 })
   ops.push({
@@ -269,7 +318,7 @@ function ingestAuthorRevisionLocked(
   const pending = findPendingReviewDraft(bookRoot, key)
   if (pending === null) return { ok: false, reason: '无待审稿' }
   const doc = parseDocument(pending.text)
-  if (!doc.ok) return { ok: false, reason: `待审稿解析失败:${doc.detail}` }
+  if (!doc.ok) return { ok: false, reason: `待审稿解析失败：${doc.detail}` }
 
   const parentBody = doc.data.body
   const parent = extractVersionFields(doc.data.fields).版本

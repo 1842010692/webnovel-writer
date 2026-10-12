@@ -12,9 +12,12 @@ import { linkFixtureDependencies } from './fixtures/fixture-dependencies.mjs'
 const run = promisify(execFile)
 const packageRoot = path.resolve(__dirname, '..')
 const checks = [
+  '写作能力停用与技能依赖中断期间即时撤销',
+  '空白切换与同名预设代际保持隔离',
+  '写作模式与普通模式并存且普通文件遵循宿主路径',
   '真实 Loader 与基线版本',
   '主 Agent 工具与全局隔离',
-  '子 Agent 工具拒绝与真实 never 策略',
+  '子 Agent 工具拒绝且保留宿主审批策略',
   '真实问答拒绝受委派调用',
   '作者裁决与本次调用绑定',
   'Loader 卸载重载等价',
@@ -22,7 +25,7 @@ const checks = [
   '运行时归属优先于历史 origin',
   '同一会话恢复后重新装机',
   '问答依赖卸载与重载',
-  '审批依赖晚到仍拒绝子 Agent',
+  '审批依赖重启不改写会话策略',
   '真实文件工具动作授权与审计',
   '文件动作预取消与等待中取消',
   '作者裁决预取消与迟到批准',
@@ -82,6 +85,7 @@ beforeAll(async () => {
   await build({
     entryPoints: {
       'lib/webnovel': path.join(packageRoot, 'src', 'index.ts'),
+      'lib/preset': path.join(packageRoot, 'src', 'preset.ts'),
       'native-write-core': path.join(packageRoot, 'tests/fixtures/native-write-core.ts'),
       'embedding-provider': path.join(packageRoot, '../embedding-provider/src/index.ts'),
       scenes: path.join(packageRoot, '../embedding-provider/src/scenes.ts'),
@@ -127,6 +131,25 @@ afterAll(() => {
 })
 
 describe('真实 DSH Loader 验收（独立进程）', () => {
+  it('原生草稿统计、PTC、取消、隔离与恢复', async () => {
+    const feedbackRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'webnovel-draft-length-'))
+    try {
+      linkHostDependencies(feedbackRoot)
+      for (const file of ['native-write-core.mjs', 'embedding-provider.mjs', 'scenes.mjs', 'reranking.mjs']) fs.copyFileSync(path.join(root, file), path.join(feedbackRoot, file))
+      fs.mkdirSync(path.join(feedbackRoot, 'lib'))
+      fs.copyFileSync(path.join(root, 'lib/preset.mjs'), path.join(feedbackRoot, 'lib/preset.mjs'))
+      fs.cpSync(path.join(packageRoot, 'skills'), path.join(feedbackRoot, 'skills'), { recursive: true })
+      await run(process.execPath, [path.join(packageRoot, 'tests/fixtures/host-loader.mjs'), feedbackRoot, path.join(root, 'lib/webnovel.mjs'), 'draft-length'], {
+        cwd: feedbackRoot, env: { ...process.env, DSH_HOME: path.join(feedbackRoot, '.dsh'), DSH_AGENTS_HOME: path.join(feedbackRoot, '.agents'), DSH_TELEMETRY_DISABLED: '1' },
+        timeout: 45000, windowsHide: true, maxBuffer: 2 * 1024 * 1024,
+      }).catch(error => { throw new Error(fs.readFileSync(path.join(feedbackRoot, 'report.json'), 'utf8'), { cause: error }) })
+      const result = JSON.parse(fs.readFileSync(path.join(feedbackRoot, 'report.json'), 'utf8'))
+      expect(Object.keys(result.checks)).toHaveLength(5)
+      for (const entry of Object.values(result.checks) as Array<{ ok: boolean; error?: string }>) expect(entry, entry.error).toEqual({ ok: true })
+      expect(result.draftLength).toMatchObject({ childReceipts: 3, reviewMatches: true, partialExcluded: true, quarantine: true, ptcReceivedOnce: true, lifecycle: true, historyRestored: true })
+    } finally { removeSync(feedbackRoot) }
+  }, 60000)
+
   it('#167 作者保存后重复空操作结束轮次，新的作者委托仍可正常修改', async () => {
     const loopRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'webnovel-save-loop-'))
     try {

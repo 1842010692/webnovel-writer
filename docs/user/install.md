@@ -1,4 +1,4 @@
-# 安装 Scriptor 8.2.0
+# 安装 Scriptor 8.2.1
 
 本版配套 **DSH 0.2.0-rc.2**。先安装这个桌面端，再在 DSH 里安装插件。
 
@@ -31,14 +31,14 @@
 1. 在添加插件的输入框粘贴下表中的完整标识。
 2. 核对预览里的包名、版本和来源。
 3. 确认安装。
-   成功时，预览中的版本是 8.2.0。
+   成功时，预览中的版本是 8.2.1。
 
 | 插件 | 输入框内容 | 用途 |
 | --- | --- | --- |
-| 写作工作台 | `@linfengqaqtat/dsh-scriptor@8.2.0` | 书房、设计、写章、审读、定稿与导出 |
-| 检索增强（可选） | `@linfengqaqtat/dsh-scriptor-retrieval@8.2.0` | 嵌入、场景识别、重排，分别配置和启用 |
-| 鲸鱼娘（可选） | `@linfengqaqtat/dsh-scriptor-companion@8.2.0` | 窗口内陪伴及会话状态反馈 |
-| 完整版（二选一） | `@linfengqaqtat/dsh-scriptor-full@8.2.0` | 一次安装写作与检索，不含桌宠 |
+| 写作工作台 | `@linfengqaqtat/dsh-scriptor@8.2.1` | 书房、设计、写章、审读、定稿与导出 |
+| 检索增强（可选） | `@linfengqaqtat/dsh-scriptor-retrieval@8.2.1` | 嵌入、场景识别、重排，分别配置和启用 |
+| 鲸鱼娘（可选） | `@linfengqaqtat/dsh-scriptor-companion@8.2.1` | 窗口内陪伴及会话状态反馈 |
+| 完整版（二选一） | `@linfengqaqtat/dsh-scriptor-full@8.2.1` | 一次安装写作与检索，不含桌宠 |
 
 后续正式版本发布到 npm 的 latest。本教程使用精确版本，方便核对配套的 DSH。安装源优先选官方 npm。
 
@@ -52,7 +52,7 @@
 2. 应用变更。如果页面要求重启，按上面的方式完全退出后再打开。
    成功时，已安装列表符合下面的结果。
 
-- **写作工作台**：包名正确，版本为 8.2.0。启用后可以打开书房。
+- **写作工作台**：包名正确，版本为 8.2.1。启用后可以打开书房。
 - **检索增强**：可以找到嵌入、场景识别和重排配置。它们默认关闭。基础写作不必先填写这些项目。
 - **鲸鱼娘**：界面出现角色。隐藏之后，可以从对应设置里恢复。
 
@@ -66,11 +66,13 @@
 
 书仓的版本记录需要可用的 Git。如果桌面端提示缺少工具，按它的提示补齐。
 
-然后阅读 [新手教程](beginner.md) 和 [第一本书与第一章](first-book.md)。10 个写作技能随主插件提供。不需要另外安装技能。
+然后阅读 [新手教程](beginner.md) 和 [第一本书与第一章](first-book.md)。11 个写作技能随主插件提供。不需要另外安装技能。
+
+开始写作前，新建对话并选择 **写作模式**。这个模式提供主编约定、写作技能和小说工具。其他预设保持 DSH 原来的用法。旧书用新的写作模式对话打开同一工作区继续，不需要迁移文件或旧聊天。
 
 ## 为什么要固定 DSH 版本
 
-插件只针对一个 DSH 版本验证。8.2.0 配套 **DSH 0.2.0-rc.2**。旧版 preview.6 / 提供方 0.0.8 对应 0.1.5-rc.2。
+插件只针对一个 DSH 版本验证。8.2.1 配套 **DSH 0.2.0-rc.2**。旧版 preview.6 / 提供方 0.0.8 对应 0.1.5-rc.2。
 
 DSH 接口会随版本变化。更高的 DSH 版本不代表已经兼容。
 
@@ -87,7 +89,7 @@ DSH 接口会随版本变化。更高的 DSH 版本不代表已经兼容。
 
 1. 停用正在使用的会话。
 2. 移除单独安装的写作工作台和检索增强。
-3. 安装 `@linfengqaqtat/dsh-scriptor-full@8.2.0`。
+3. 安装 `@linfengqaqtat/dsh-scriptor-full@8.2.1`。
 4. 应用变更。
    成功时，只剩下完整版这一个入口。
 
@@ -112,16 +114,16 @@ DSH 接口会随版本变化。更高的 DSH 版本不代表已经兼容。
 8. 确认主包和检索各只有一个有效入口，然后再继续写作。
    书稿不会因为改了包名就自动搬迁。
 
-0.1.0-preview.7 / 旧提供方 0.0.9 对应 DSH 0.1.7-rc.2。8.2.0 对应 DSH 0.2.0-rc.2。旧版资料留在相应的 Release。不要把一个版本的说明套到另一个 DSH 上。
+0.1.0-preview.7 / 旧提供方 0.0.9 对应 DSH 0.1.7-rc.2。8.2.1 对应 DSH 0.2.0-rc.2。旧版资料留在相应的 Release。不要把一个版本的说明套到另一个 DSH 上。
 
-[下载本版及校验和](https://github.com/lingfengQAQ/webnovel-writer/releases/tag/scriptor-v8.2.0) · [配置教程](configuration.md) · [故障排查](troubleshooting.md) · [维护者命令行安装](../maintenance/cli-install.md)
+[下载本版及校验和](https://github.com/lingfengQAQ/webnovel-writer/releases/tag/scriptor-v8.2.1) · [配置教程](configuration.md) · [故障排查](troubleshooting.md) · [维护者命令行安装](../maintenance/cli-install.md)
 
 ## 平台与测试范围
 
 | 平台 | 已有验证 |
 | --- | --- |
 | Windows | Node 22/24 全量测试、构建、类型检查，以及发行包安装验证 |
-| Linux | CI 包含公开检查、发行脚本测试，以及 Ubuntu 上的构建和全量测试观察任务 |
-| macOS | 暂无可用的测试环境，尚未验证；这不代表不支持 |
+| Linux | Ubuntu 构建和全量测试是必需检查；通过后才允许合入发行源码 |
+| macOS | CI 包含构建和全量测试观察任务，尚不等同于桌面安装验收 |
 
-Linux 运行时测试目前是观察任务，失败不会阻塞发行。它与 Windows 的安装验证范围不同。具体配置见 [CI 验证说明](../maintenance/ci.md)。
+Linux 检查失败会阻塞合入。macOS 观察项的结果单独报告。两者与 Windows 的安装验证范围不同。具体配置见 [CI 验证说明](../maintenance/ci.md)。

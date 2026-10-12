@@ -21,7 +21,7 @@ export class ReferenceHost {
     const active = AbortSignal.any([this.shutdown.signal, ...(signal ? [signal] : [])])
     active.throwIfAborted()
     const fs = this.access.fs(agent)
-    if (!fs) throw new ReferenceError('fs-unavailable', '宿主文件服务不可用')
+    if (!fs) throw new ReferenceError('fs-unavailable', 'DSH 文件服务不可用')
     if (!path.isAbsolute(filename)) throw new ReferenceError('source-path', '请选择原文文件的绝对路径')
     const mapped = fs.processPathFromHostPath(filename), workspacePath = fs.processPathFromHostPath(workspace)
     if (!mapped || !workspacePath) throw new ReferenceError('fs-world', '该文件或工作范围无法映射到当前执行环境；未回退到其他文件系统读取')
@@ -82,7 +82,7 @@ export class ReferenceHost {
         }
         await check()
         const llm = this.access.llm(agent)
-        if (!llm) throw new ReferenceError('model-unavailable', '宿主模型服务不可用')
+        if (!llm) throw new ReferenceError('model-unavailable', 'DSH 模型服务不可用')
         const prepared = await abortableReference(llm.prepareCall({ provider: input.route.provider, model: input.route.model, maxTokens: input.maxOutputTokens }, active), active)
         await check()
         if (Buffer.byteLength(input.system + input.text) + input.maxOutputTokens > (prepared.context?.contextWindow ?? 32768)) throw new ReferenceError('model-budget', '本批超出模型上下文预算，请重新计划更小范围')

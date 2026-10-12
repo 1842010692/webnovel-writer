@@ -1,0 +1,44 @@
+[
+  {
+    "file": "packages/core/src/memory/author.ts",
+    "check": "strength",
+    "from": 2,
+    "allow": 1,
+    "reason": "名称不得为索引等校验移入 memory/write.ts，由作者与本书写入器共用。约束仍执行并有回归测试；范围现在显式声明，标签按获批方案改为可选，不承担归属校验。"
+  },
+  {
+    "file": "packages/core/src/memory/book.ts",
+    "check": "strength",
+    "from": 2,
+    "allow": 1,
+    "reason": "名称不得为索引等共同校验移入 memory/write.ts；本书路径继续调用同一校验，新增覆盖与过期更新约束更严格，没有降低要求。"
+  },
+  {
+    "file": "packages/core/src/impact/index.ts",
+    "check": "strength",
+    "from": 3,
+    "allow": 2,
+    "reason": "改用 TypeScript 语法解析后，排除两处类型声明中的须走吃书补偿字面量重复计数；运行时要求及本文件内容未放宽。"
+  },
+  {
+    "file": "packages/core/src/outline/parse.ts",
+    "check": "strength",
+    "from": 3,
+    "allow": 1,
+    "reason": "改用语法解析后排除旧字符串扫描器对正则表达式的误识别；约束解析规则与提示词未修改。"
+  },
+  {
+    "file": "packages/bundle/src/gates.ts",
+    "check": "strength",
+    "from": 2,
+    "allow": 1,
+    "reason": "普通相对路径不再由插件要求必须带书 id，交回宿主原有权限；书仓内“书id 必须已在书架扫描中发现”仍保留。"
+  },
+  {
+    "file": "packages/core/src/reference/analysis.ts",
+    "check": "ratio",
+    "from": 1,
+    "allow": 0.024,
+    "reason": "补扫原来遗漏的运行时提示词常量，其中包含完整输出协议；保持既有内容与协议，记录扩大扫描范围后的实际句长。"
+  }
+]

@@ -44,7 +44,7 @@ export function gateWriteDraft(bookRoot: string, relPath: string):
   | { readonly allow: false; readonly reason: string } {
   if (!isDraftRelPath(relPath)) return { allow: true }
   const parsed = parseDraftChapterKey(relPath)
-  if (!parsed) return { allow: false, reason: '草稿路径无法解析章节键,拒绝写入(路径形状校验)' }
+  if (!parsed) return { allow: false, reason: '草稿路径无法解析章节键，拒绝写入(路径形状校验)' }
   return { allow: true }
 }
 

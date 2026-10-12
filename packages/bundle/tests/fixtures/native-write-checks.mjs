@@ -1,3 +1,4 @@
+import { createPresetAgent } from './preset-agents.mjs'
 import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -133,7 +134,7 @@ export async function checkNativeWrites({ root, book, main, ctx, service, execut
 
     await check('读观察按会话隔离且普通嵌套调用不能绕过门禁', async () => {
       await read(contractPath)
-      const independent = await service('agents').create({ sessionId: 'native-independent', meta: { cwd: path.dirname(book) } })
+      const independent = await createPresetAgent(service('agents'), { sessionId: 'native-independent', meta: { cwd: path.dirname(book) } })
       const before = text(contractPath)
       const beforeHead = head()
       try {

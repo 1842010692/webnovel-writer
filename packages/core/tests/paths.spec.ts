@@ -20,7 +20,7 @@ describe('路径白名单(机制 B2)', () => {
     expect(validateSegment('').length).toBeGreaterThan(0)
   })
   it('assertSegment 抛错带字段名', () => {
-    expect(() => assertSegment('a/b', '章名')).toThrow(/B2/)
+    expect(() => assertSegment('a/b', '章名')).toThrow(/路径字段「章名」不合法/)
   })
 })
 

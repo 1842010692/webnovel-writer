@@ -21,7 +21,7 @@ function applyWith(services: Record<string, unknown>): Registered[] {
   // dsh 运行时对齐批：注册落点＝agent 的 scope 层（经 agentCtx.get('tools')）。
   // 桩 agent 的 ctx 与宿主共享同一 tools 记录器，模拟服务经 scope 链可达。
   const recorder = { register: (t: Registered) => { registered.push(t); return () => {} } }
-  const agent = { id: 'a-1', ctx: { get: (n: string) => (n === 'tools' ? recorder : undefined) } }
+  const agent = { id: 'a-1', ctx: { get: (n: string) => (n === 'tools' ? recorder : n === 'agentPresets' ? { serviceFor: () => ({ mode: 'writing' }) } : undefined) } }
   const scope = {
     logger: { info: () => {}, warn: () => {} },
     get: (n: string) => services[n],

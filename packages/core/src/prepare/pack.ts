@@ -17,6 +17,7 @@ import { reconcileLedger } from '../ledger'
 import {
   checkLedgerSectionFields,
   checkMemorySectionFields,
+  memoryUpdateBaselines,
   parseFactSections,
   parseLedgerSections,
   parseMemorySections,
@@ -39,6 +40,7 @@ export interface 沉淀候选 {
   readonly 时间线变更?: string
   readonly 账本变更?: string
   readonly 记忆候选?: string
+  readonly 记忆原文?: Readonly<Record<string, string>>
   readonly 章摘要?: string
   readonly 事实变更?: string
 }
@@ -114,12 +116,14 @@ export function computePack(bookRoot: string, key: ChapterKey, 沉淀候选?: �
   const dir = paths.待定稿包目录(key.卷, key.章名)
   const pendingCount = countPendingReviewDrafts(bookRoot, key)
   const pending = findPendingReviewDraft(bookRoot, key)
-  if (pendingCount > 1) return { ok: false, dir, reason: `待审稿不唯一:${pendingCount}份` }
+  if (pendingCount > 1) return { ok: false, dir, reason: `待审稿不唯一：${pendingCount}份` }
   if (pendingCount === 0 || pending === null) return { ok: false, dir, reason: '无待审稿' }
 
+  let 记忆更新基线: Record<string, string> = {}
   if (沉淀候选 !== undefined) {
     try {
       validateCandidates(沉淀候选)
+      记忆更新基线 = memoryUpdateBaselines(bookRoot, 沉淀候选.记忆候选, 沉淀候选.记忆原文)
     } catch (err) {
       return { ok: false, dir, reason: err instanceof Error ? err.message : String(err) }
     }
@@ -192,6 +196,7 @@ export function computePack(bookRoot: string, key: ChapterKey, 沉淀候选?: �
   const 清单 = serializeMachineJson({
     文件,
     工件,
+    ...(Object.keys(记忆更新基线).length ? { 记忆更新基线 } : {}),
     来源版本: 来源版本 ?? pending.relPath,
     校验: '通过',
     偏离已呈报: 对账.已呈报,

@@ -1,3 +1,4 @@
+import { isWritingAgent } from '../agent-mode'
 import { AUTHOR_SAVE_SOURCE, EDITOR_REQUEST_SOURCE } from '../message-sources'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -73,7 +74,7 @@ export function savedMessage(result: Pick<StudySave, 'operationId' | 'document' 
     ? '正文已保存，但提交失败；指引作者在编辑器重试提交，不调用设计工具重写正文来补提交。'
     : result.commit === 'saved' ? '保存已完成且已提交，无需补提交。' : '保存已完成，本次无需提交。'
   const adopted = accepted.length > 0
-    ? `本次改动含 ${accepted.length} 处作者在编辑器中采纳的主 Agent 建议（${accepted.map(id => '#' + id).join('、')}）。这些段落已由作者确认，核对时不要再次润色或改写。`
+    ? `本次改动含 ${accepted.length} 处作者在编辑器中采纳的主控建议（${accepted.map(id => '#' + id).join('、')}）。这些段落已由作者确认，核对时不要再次润色或改写。`
     : undefined
   return [
     '作者通过书房编辑器保存了文档。本次只核对并报告这次修改。',
@@ -94,6 +95,8 @@ export function savedMessage(result: Pick<StudySave, 'operationId' | 'document' 
     JSON.stringify(result.changes),
   ].join('\n')
 }
+
+const WRITING_MODE_REQUIRED = '请新建「写作模式」对话后再使用这项 AI 写作。当前会话可以继续手动保存。'
 
 export function notifySaved(agent: StudyAgent, message: string): Pick<StudySave, 'notification' | 'notificationError'> {
   try {
@@ -179,7 +182,7 @@ function openEditorRequest(hub: EditorRequestHub, agent: StudyAgent, snapshot: E
   }
 }
 
-export function createStudyHandler(runtime: StudyWebRuntime, indexing?: BookIndexManager, workflow = new WorkflowObserver(), editorRequests = new EditorRequestHub()) {
+export function createStudyHandler(runtime: StudyWebRuntime, indexing?: BookIndexManager, workflow = new WorkflowObserver(), editorRequests = new EditorRequestHub(), writing: (agent: StudyAgent) => boolean = () => true) {
   const delivered = new Map<string, StudyAgent>()
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST' || request.headers.get('x-webnovel-request') !== '1') {
@@ -232,10 +235,11 @@ export function createStudyHandler(runtime: StudyWebRuntime, indexing?: BookInde
           if (saved.previousPath !== saved.document.ref.path) {
             editorRequests.retarget(agent, { space: current.space, path: saved.previousPath }, saved.document.ref)
           }
-          value = { ...saved, ...(saved.changed ? notify(saved, accepted) : { notification: 'not-required' }) }
+          value = { ...saved, ...(saved.changed && writing(agent) ? notify(saved, accepted) : { notification: 'not-required' }) }
           break
         }
         case 'notify': {
+          if (!writing(agent)) { value = { notification: 'not-required' }; break }
           const ref = refOf(input)
           const accepted = editorRequests.acceptedFor(agent, acceptedOf(input), service.read(ref).ref)
           const saved = service.saved(ref, stringOf(input, 'hash'), stringOf(input, 'operationId'), sessionId)
@@ -243,6 +247,7 @@ export function createStudyHandler(runtime: StudyWebRuntime, indexing?: BookInde
           break
         }
         case 'ask': {
+          if (!writing(agent)) throw new AuthorDocumentError('read-only', WRITING_MODE_REQUIRED)
           const intent = intentOf(input['intent'])
           const document = service.read(refOf(input))
           if (document.readOnly && intent !== 'review') throw new AuthorDocumentError('read-only', '只读文档只允许审读：' + document.readOnly)
@@ -262,7 +267,7 @@ export function createStudyHandler(runtime: StudyWebRuntime, indexing?: BookInde
             agent.followup(createUserMessage({ content: [{ type: 'text', text: requestMessage(snapshot) }], source: { kind: EDITOR_REQUEST_SOURCE, requestId } }))
           } catch {
             editorRequests.drop(agent, requestId)
-            throw new Error('主 Agent 没有收到请求')
+            throw new Error('主控没有收到请求')
           }
           value = { requestId, busy }
           break
@@ -287,7 +292,7 @@ export function attachStudyWeb(ctx: Context, indexing?: BookIndexManager, editor
   ctx.inject(['connection', 'agents'], scope => {
     const workflow = new WorkflowObserver()
     observeWorkflow(scope, workflow)
-    const handler = createStudyHandler(scope, indexing, workflow, editorRequests)
+    const handler = createStudyHandler(scope, indexing, workflow, editorRequests, agent => isWritingAgent(agent as { ctx?: unknown }))
     for (const method of METHODS) {
       scope.connection.fetch.register({ path: STUDY_API_PATH + method, methods: ['POST'], requestBody: 'streaming', fetch: handler })
     }

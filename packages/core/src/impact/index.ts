@@ -113,13 +113,13 @@ export function buildRefGraph(bookRoot: string): RefGraph {
     for (const line of sourceLines(fields)) {
       const parsed = parseSourceRef(line.startsWith('来源') ? line : `来源:${line}`)
       if (parsed === null) {
-        解析失败.push({ rel, detail: `来源引用语法无法解析:「${line}」` })
+        解析失败.push({ rel, detail: `来源引用语法无法解析：「${line}」` })
         continue
       }
       if (parsed.kind !== '仓内') continue // 知识库/作者自定义/对谈共创 无仓内边
       const to = normalizeNodeKey(parsed.path)
       if (to === null) {
-        解析失败.push({ rel, detail: `来源引用路径不合法:「${line}」` })
+        解析失败.push({ rel, detail: `来源引用路径不合法：「${line}」` })
         continue
       }
       edges.push({ from, to, source: line, version: parsed.version, field: '来源引用' })
@@ -131,7 +131,7 @@ export function buildRefGraph(bookRoot: string): RefGraph {
       } else {
         const to = normalizeNodeKey(ref.path)
         if (to === null) {
-          解析失败.push({ rel, detail: `来源细纲版本 路径不合法:「${ref.raw}」` })
+          解析失败.push({ rel, detail: `来源细纲版本 路径不合法：「${ref.raw}」` })
         } else {
           if (ref.version === '') 提示.push(`「${rel}」的 来源细纲版本 缺 @版本,边已建但版本未知`)
           edges.push({ from, to, source: ref.raw, version: ref.version, field: '来源细纲版本' })

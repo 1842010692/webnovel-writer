@@ -12,7 +12,7 @@ if (process.env['CI']) mkdirSync(diagnostics, { recursive: true });
 
 export default defineConfig({
   test: {
-    include: ['packages/*/tests/**/*.spec.ts', 'packages/*/src/**/*.spec.ts'],
+    include: ['packages/*/tests/**/*.{spec,test}.ts', 'packages/*/src/**/*.{spec,test}.ts'],
     environment: 'node',
     // Many integration files spawn Git/Node processes; bound contention on CI.
     maxWorkers: process.env['CI'] ? 2 : 4,

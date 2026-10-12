@@ -1,8 +1,16 @@
 # 用户文档写作规范
 
-`docs/user` 按下面的中文化简写规则书写，大约覆盖 ASD-STE100 的 80%。目标是让读者能逐步照做，同一事物只用一个名称，并在有风险的操作之前看到警告。
+`docs/user` 按下面的中文化简写规则书写。目标是让读者能逐步照做，同一事物只用一个名称，并在有风险的操作之前看到警告。不声明 ASD-STE100 的覆盖比例。
 
-检查脚本 `scripts/release/ste-report.mjs` 只读取本文「术语表」里的「不要写」列。`pnpm docs:ste` 出报告，`node scripts/release/ste-report.mjs --check` 做门禁。
+检查脚本 `scripts/release/style-check.mjs` 做句长与术语检查。它不是 STE 合规评分。
+
+- 它读取本文「术语表」的「不要写」列和「近义词组」表。
+- `pnpm docs:style` 出 docs/user 的报告。`--skills`、`--tools` 分别检查技能与工具输出，`--all` 检查全部。
+- `--check` 做门禁：每个文件不得比 `scripts/release/style-baseline.json` 退步。比较三项：句长达标率、要求强度词数、CJK 之间的半角标点数。
+- 要求强度词（严禁、绝不、禁止、不得、一律、必须、须）减少时，门禁失败。确需放宽时，在 `scripts/release/style-exceptions.json` 登记例外，写明理由。
+- 术语表禁用词、工具输出中的 `Error:` 和 `(B数字`，直接失败。
+- 超过 80 字的句子、近义词混用、超过 6 句的段落，只提示，不失败。
+- 内容改进后运行 `--update-baseline` 更新基线。强度词或达标率下降时，基线不更新。
 
 ## 采用的条款
 
@@ -61,7 +69,11 @@
 
 ### 6. 句长软上限
 
-步骤句大约不超过 40 字，说明句大约不超过 50 字。表格、命令、包名、错误原文和行内代码不按这个上限计。门禁要求两类句子各自至少 80% 达标，不设单句硬上限。
+步骤句大约不超过 40 字，说明句大约不超过 50 字。门禁按每类句子的限长计算，再合并为该文件的达标率，与已提交基线比较，不设统一的 80% 门槛。Markdown 表格正文计入说明句；行内代码和引号内容各计一个占位字。工具输出中的命令、包名和错误原文照实计长，不设单句硬上限。
+
+工具输出使用 TypeScript 语法解析，检查运行时字符串（包括消息常量）。禁词检查不受六字起计限制，英文错误前缀也检查。类型字面量、属性名、导入路径及直接比较值不作为输出。
+
+例外必须提供 `file`、`check`、`from`、`allow`、`reason`。`from` 固定为批准例外时的原基线，`allow` 是这次允许的退步量；更新基线不会重置额度。比例使用 0 到 1 的数值，强度词和格式数量使用非负整数。同一文件同一检查只允许一条例外。
 
 改写前：插件在发行时只针对一个宿主版本验证，更高的宿主版本不代表已经兼容，安装或升级插件前先核对目标版本对应的宿主。
 
@@ -90,6 +102,29 @@
 - 英文冠词、动词 -ing 等形式条款不用于中文。
 - 界面文字、错误信息、代码、命令和发给工作台的示例话术一律照原文保留。
 
+## 中文改写检查清单
+
+改写技能、提示词或工具输出时，逐条核对下面 8 项。检查脚本只测句长、术语、强度词和半角标点，不测语义。下面各项必须由人核对。
+
+- [ ] **保真**：先理解原意，再简化。事实、条件、否定、范围、例外、顺序、比较、数值、单位、标识符都要保留。没有依据时，不补原因、频率、机制或操作。
+- [ ] **执行者与动词**：写清谁做什么，用直接动词（「检查日志」，不写「进行日志的检查」）。原文没有说明执行者、上下文也无法确定时，不指定执行者。
+- [ ] **一句一事，条件在前**：每句只表达一个动作或一个主要判断。必要条件写在动作前，例如「仅当备份完成且校验通过时，才删除源文件」。拆句时保留「且 / 或 / 仅当 / 除非」。不要把有条件的要求写成无条件命令。
+- [ ] **风险在前**：风险和禁止事项写在相关操作前。保留严重性、发生条件和可能性。不得为简短删除安全限制。原文缺少必要的安全条件时，标明缺失，不编造。
+- [ ] **要求强度与置信度不变**：「必须 / 不得」「应当 / 建议」「可以」「可能 / 通常 / 已确认」含义各不相同。不要把「应当」改成强制命令，不要把「可能」改成必然。「严禁」「绝不」「一律」不得弱化成「不要」「别」。只有同义且不丢信息时，才删除重复的缓和语。
+- [ ] **准确用词**：使用准确、常用的词。保留必要的专业术语，按读者需要解释。不要为了口语化替换有特定技术含义的名称。保留「已 / 正在 / 将 / 曾」等时间、状态和不确定性信息。
+- [ ] **段落与顺序**：一段只讲一个主题。多步操作按执行顺序列出，并列条件保持原来的组合关系。过密的句子优先拆开，但不设机械字数上限，中文分号也可以用。精度优先于短句。
+- [ ] **不造判据**：删除没有信息的套话。不要把未量化的评价（如「合理」「相关」）改写成新编的指标或判据。原文不清楚时，保留歧义，指出需要作者澄清的地方。
+
+本清单改编自 [asd-ste100-zh-skill](https://github.com/timwhitez/asd-ste100-zh-skill) 的「中文改写规则」，依 MIT 许可使用：
+
+> Copyright (c) 2026 Dustin Yuchen Teng
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 ## 共享 Markdown 约定
 
 这些写法在 GitHub 上保持可读。站点会额外渲染提示框、示例话术气泡、步骤条、按键和图注。
@@ -115,6 +150,10 @@
 | 主会话 | 某个工作区里与作品对应的主对话会话 | 主对话 | 界面原文为「主会话」 |
 | 主控 | 主会话中负责调度的主 Agent | 主 Agent | 界面原文为「已交给主控」 |
 | 工作区 | 会话选择的作品根目录，可以包含多本书 | 作品目录 | 选择或新建这个根目录时写工作区 |
+| 子代理 | 主控派发、在隔离上下文里执行起草、审读或润色的代理 | 子 Agent、Subagent | 技能、提示词和工具输出也用这个名称 |
+| 作者批准 | 作者对呈报内容的明确表态 | 作者同意 | 指作者表态时用「批准」。「确认」只用于 confirm 类工具的动作，例如确认细纲 |
+| 待定稿包 | 定稿准备目录里等待作者裁决的一组文件 | — | 不要简写成「定稿包」 |
+| 专用工具 | 写入真源区的 novel_* 工具 | 书仓写入器 | 拒绝文件工具写入时，指出对应的专用工具 |
 | 书仓 | 一本书的目录，含 `作品契约/契约.md` | — | 不要把书仓写成工作区。一本书才是书仓 |
 | 审读 | 一次按维度检查正文的运行，包括全面审读、审读卡、审读指纹 | — | 与「审核」不同，不要互换 |
 | 审核 | 章节流程中的审核阶段，以及审核记录、审核结论 | — | 与「审读」不同，不要互换 |
@@ -122,3 +161,16 @@
 | 定稿 | 作者批准后入档的章节。动词也用「定稿」 | — | 「草稿已生成」和「已点击批准」不等于定稿 |
 | 发现项 | 审读给出的单条问题 | — | |
 | profile | DSH 中的一份插件与设置组合 | — | 保持英文，与界面一致 |
+
+## 近义词组
+
+同一概念在一个文件里只用一种写法。检查脚本发现同一文件混用同组的两种以上写法时，给出提示。
+
+| 概念 | 同组写法 |
+|---|---|
+| 作者批准 | 作者批准、作者认可、作者首肯、作者点头 |
+| 退回 | 退回、打回、驳回重写 |
+| 呈报 | 呈报、汇报给作者、上报作者 |
+| 候选 | 候选稿、备选稿 |
+| 发现项 | 发现项、问题项、审读问题条目 |
+| 书仓 | 书仓、书库目录、作品仓库 |

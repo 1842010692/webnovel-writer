@@ -1,6 +1,7 @@
 /* @webnovel/core —— 核心服务(M0:书仓/推导/配置最小)。行为规格见 docs/book-format.md。 */
 export * from './repo/paths'
 export * from './repo/frontmatter'
+export * from './repo/draft-length'
 export * from './repo/atomic'
 export * from './repo/transaction'
 export * from './repo/lock'
@@ -55,5 +56,5 @@ export {
   type ProseTextCounts,
 } from './repo/drafts'
 
-export { scanWorkspaceBooks, uniqueBookRoot, hasBooks, type WorkspaceBook } from './book/identity'
+export { scanWorkspaceBooks, uniqueBookRoot, hasBooks, containingBookRoot, type WorkspaceBook } from './book/identity'
 export * from './reference'

@@ -157,7 +157,7 @@ function read(root: string, relPath: string, label: string): { readonly ok: true
   try {
     return { ok: true, text: fs.readFileSync(path.join(root, relPath), 'utf-8') }
   } catch {
-    return { ok: false, kind: 'missing', reason: `${label}不存在:${relPath}` }
+    return { ok: false, kind: 'missing', reason: `${label}不存在：${relPath}` }
   }
 }
 
@@ -192,7 +192,7 @@ function parseEntries<T extends string>(text: string, category: T, source: strin
       const value = match?.[2]?.trim()
       if (!inBody && field !== undefined && value !== undefined && STRUCTURED_FIELDS.has(field)) {
         if (fields[field] !== undefined) {
-          throw new ParseEntryError(`字段重复:${field}`, item.line)
+          throw new ParseEntryError(`字段重复：${field}`, item.line)
         }
         fields[field] = value
         continue
@@ -343,7 +343,7 @@ export function queryLedger(bookRoot: string, filter?: LedgerEntryFilter): Ledge
     return { ok: false, kind: 'parse-error', reason: failures.join('；'), file: firstFailure, entries: current, files }
   }
   if (missing.length > 0) {
-    return { ok: false, kind: 'missing', reason: `账本文件缺失:${missing.join('、')}`, file: missing[0], entries: current, files }
+    return { ok: false, kind: 'missing', reason: `账本文件缺失：${missing.join('、')}`, file: missing[0], entries: current, files }
   }
   return { ok: true, entries: current, files }
 }

@@ -24,7 +24,8 @@ describe('本书记忆一事一文件(A10)', () => {
     const root = mkDir('webnovel-memory-description-')
     const input = { 类: '决策' as const, 名称: '拒绝内卫', 来源: '对谈', 裁决记录: '批准', 正文: '不加入内卫。' }
     expect(writeBookMemory(root, { ...input, 描述: '主角阵营边界' }).ok).toBe(true)
-    expect(writeBookMemory(root, { ...input, 正文: '不加入内卫，也不接受招揽。' }).ok).toBe(true)
+    const 原文 = fs.readFileSync(path.join(root, '本书记忆/拒绝内卫.md'), 'utf8')
+    expect(writeBookMemory(root, { ...input, 操作: '更新', 原文, 正文: '不加入内卫，也不接受招揽。' }).ok).toBe(true)
     const doc = parseDocument(fs.readFileSync(path.join(root, '本书记忆/拒绝内卫.md'), 'utf8'))
     expect(doc.ok && doc.data.fields['描述']).toBe('主角阵营边界')
     expect(fs.readFileSync(path.join(root, '本书记忆/索引.md'), 'utf8')).toContain('主角阵营边界｜类：决策')

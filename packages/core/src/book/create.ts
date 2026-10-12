@@ -60,20 +60,20 @@ export function createBook(input: CreateBookInput): CreateBookResult {
 
   const bookRoot = path.join(workspaceRoot, input.书名)
   if (fs.existsSync(bookRoot)) {
-    return { ok: false, reason: `目标目录已存在:${bookRoot}` }
+    return { ok: false, reason: `目标目录已存在：${bookRoot}` }
   }
 
   // N2: 严格校验构想完整性与确认状态
   const completeness = checkConceptCompleteness(input.concept)
   if (!completeness.ok) {
-    return { ok: false, reason: `构想未确认或未完整,拒绝建书(缺失: ${completeness.gaps.join(', ')})` }
+    return { ok: false, reason: `构想未确认或未完整，拒绝建书(缺失: ${completeness.gaps.join(', ')})` }
   }
 
   try {
     return withBookLock(workspaceRoot, () => {
       const bookId = generateBookId(input.书名)
       if (scanWorkspaceBooks(workspaceRoot).some(book => book.bookId === bookId)) {
-        return { ok: false, reason: `书id已存在或碰撞:${bookId}，请换一个书名；已有书id不会改写` }
+        return { ok: false, reason: `书id已存在或碰撞：${bookId}，请换一个书名；已有书id不会改写` }
       }
       let created = false
       try {
@@ -86,7 +86,7 @@ export function createBook(input: CreateBookInput): CreateBookResult {
         if (created) {
           try { removeSync(bookRoot) } catch { /* 尽力清书仓 */ }
         }
-        return { ok: false, reason: `建书失败已回滚:${String(err)}` }
+        return { ok: false, reason: `建书失败已回滚：${err instanceof Error ? err.message : String(err)}` }
       }
     })
   } catch (error) {
@@ -106,8 +106,8 @@ function initFirstCommit(bookRoot: string): string {
 
 function runGit(cwd: string, args: readonly string[]): void {
   const r = spawnSync('git', args, { cwd, encoding: 'utf-8', windowsHide: true })
-  if (r.error) throw new Error(`git ${args[0]} 失败:${r.error.message}`)
+  if (r.error) throw new Error(`git ${args[0]} 失败：${r.error.message}`)
   if ((r.status ?? 1) !== 0) {
-    throw new Error(`git ${args.join(' ')} 失败:${(r.stderr ?? '').trim() || (r.stdout ?? '').trim() || '非零退出'}`)
+    throw new Error(`git ${args.join(' ')} 失败：${(r.stderr ?? '').trim() || (r.stdout ?? '').trim() || '非零退出'}`)
   }
 }

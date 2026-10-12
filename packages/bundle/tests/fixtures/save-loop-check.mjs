@@ -1,3 +1,4 @@
+import { createPresetAgent } from './preset-agents.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -68,7 +69,7 @@ export async function checkSaveLoop({ root, book, workspace, ctx, service, git, 
       }
     }
     service('llm').registerAdapter(['save-loop-fixture'], new RepeatingAdapter())
-    const handle = await service('agents').create({ sessionId: 'save-loop', meta: { cwd: workspace }, agentOptions: { provider: 'save-loop-fixture', model: 'fixture' } })
+    const handle = await createPresetAgent(service('agents'), { sessionId: 'save-loop', meta: { cwd: workspace }, agentOptions: { provider: 'save-loop-fixture', model: 'fixture' } })
     try {
       const complete = async message => new Promise((resolve, reject) => {
         const timer = setTimeout(() => { off(); reject(new Error('save loop turn did not reach idle')) }, 15000)

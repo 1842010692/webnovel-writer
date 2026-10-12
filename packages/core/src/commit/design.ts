@@ -43,7 +43,7 @@ export function commitConfirmed(opts: CommitConfirmedOptions): CommitConfirmedRe
 }
 
 function commitConfirmedLocked(opts: CommitConfirmedOptions): CommitConfirmedResult {
-  if (opts.paths.length === 0) return { ok: false, reason: '提交清单为空,拒绝' }
+  if (opts.paths.length === 0) return { ok: false, reason: '提交清单为空，拒绝' }
 
   const dests: string[] = []
   for (const target of opts.paths) {
@@ -65,10 +65,10 @@ function commitConfirmedLocked(opts: CommitConfirmedOptions): CommitConfirmedRes
   })
   const commit = commitWithIsolatedIndex(opts.bookRoot, dests, message)
   if (commit.noChanges) {
-    return { ok: true, message: '无改动,未产生提交', dests, noChanges: true }
+    return { ok: true, message: '无改动，未产生提交', dests, noChanges: true }
   }
   if (commit.status !== 0) {
-    return { ok: false, reason: `文件已写入但提交失败,未形成提交:${commit.stderr.trim() || 'git commit 失败'}` }
+    return { ok: false, reason: `文件已写入但提交失败，未形成提交：${commit.stderr.trim() || 'git commit 失败'}` }
   }
   return { ok: true, message, dests }
 }

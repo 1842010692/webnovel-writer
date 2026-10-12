@@ -1,3 +1,4 @@
+import { createPresetAgent } from './preset-agents.mjs'
 import assert from 'node:assert/strict'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -114,7 +115,7 @@ export async function checkSearch({ root, workspace, main, child, ctx, service, 
       const otherBook = path.join(elsewhere, '同id书')
       put('作品契约/契约.md', `---\n书id: ${bookId}\n---\n另一工作范围`, otherBook)
       put('定稿/卷01/0001-独立.md', '其他工作区线索', otherBook)
-      const other = await service('agents').create({ sessionId: 'loader-search-other', meta: { cwd: elsewhere } })
+      const other = await createPresetAgent(service('agents'), { sessionId: 'loader-search-other', meta: { cwd: elsewhere } })
       try {
         assert.equal((await search('林舟', other.agent)).hits.length, 0)
         assert.equal((await search('其他工作区线索', other.agent)).hits[0].absolutePath, path.join(otherBook, '定稿/卷01/0001-独立.md'))
