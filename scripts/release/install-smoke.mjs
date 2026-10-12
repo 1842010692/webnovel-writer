@@ -90,7 +90,7 @@ try {
   log('source-isolation', output)
   assert.equal(JSON.parse(fs.readFileSync(isolatedReport, 'utf8')).ok, true)
   report.checks.sourceDeniedRealLoader = true
-  report.checks.skills = 10
+  report.checks.skills = JSON.parse(fs.readFileSync(isolatedReport, 'utf8')).skills
   if (companion) {
     const companionName = 'scriptor-companion-test'
     log('companion-web-profile', run(cli, ['--profile', companionName, '--from-default-profile', 'web', '--dump-config']))
