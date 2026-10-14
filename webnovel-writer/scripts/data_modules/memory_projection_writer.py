@@ -19,7 +19,11 @@ class MemoryProjectionWriter:
             commit_payload
         )
         return {
-            "applied": bool((result or {}).get("items_added") or (result or {}).get("items_updated")),
+            "applied": bool(
+                (result or {}).get("items_added")
+                or (result or {}).get("items_updated")
+                or (result or {}).get("items_outdated")
+            ),
             "writer": "memory",
             **(result or {}),
         }

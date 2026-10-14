@@ -57,6 +57,20 @@ class MemoryWriter:
         subject = str(event.get("subject") or "").strip()
         return subject
 
+    def _retire_open_loop(self, content: str, stats: Dict[str, Any]) -> None:
+        """同 subject 的活跃伏笔改为 outdated。记忆状态没有 resolved，过期后不再进入 active 查询。"""
+        for item in self.store.query(category="open_loop", subject=content, status="active"):
+            if self.store.mark_status(item.id, "outdated"):
+                stats["items_outdated"] += 1
+
+    def _planting_already_closed(self, content: str, chapter: int) -> bool:
+        """重放埋设章时，不要把已经关闭的同一条目重新写成 active。"""
+        item_id = self._item_id("open_loop", content, "status", chapter)
+        for item in self.store.query(category="open_loop", subject=content, status=None):
+            if item.id == item_id and item.status == "outdated":
+                return True
+        return False
+
     def update_from_chapter_result(self, chapter: int, result: Dict[str, Any]) -> Dict[str, Any]:
         stats: Dict[str, Any] = {
             "chapter": int(chapter),
@@ -232,6 +246,11 @@ class MemoryWriter:
             content = str(row.get("content", "") or "").strip()
             if not content:
                 continue
+            if row.get("close"):
+                self._retire_open_loop(content, stats)
+                continue
+            if self._planting_already_closed(content, chapter):
+                continue
             item = MemoryItem(
                 id=self._item_id("open_loop", content, "status", chapter),
                 layer="semantic",
@@ -326,6 +345,10 @@ class MemoryWriter:
                             ),
                         }
                     )
+            elif event_type == "open_loop_closed":
+                content = self._coerce_loop_content(payload, event)
+                if content:
+                    memory_facts["open_loops"].append({"content": content, "close": True})
             elif event_type in {"promise_created", "promise_paid_off"}:
                 content = str(
                     payload.get("content")

@@ -612,6 +612,90 @@ def test_memory_projection_writer_maps_open_loop_event_into_scratchpad(tmp_path)
     assert any("三年之约" in x.subject for x in loops)
 
 
+def test_memory_projection_closes_open_loop_without_reopening_on_replay(tmp_path):
+    """issue #197：open_loop_closed 必须让记忆台账不再把该伏笔当作 active。"""
+    cfg = DataModulesConfig.from_project_root(tmp_path)
+    cfg.ensure_dirs()
+    writer = MemoryProjectionWriter(tmp_path)
+    writer.apply(
+        _commit_payload(
+            chapter=5,
+            accepted_events=[
+                _loop_event(
+                    "open_loop_created",
+                    "三年之约提及",
+                    urgency="high",
+                    planted_chapter=5,
+                    expected_payoff="三年后兑现",
+                )
+            ],
+        )
+    )
+    close_payload = _commit_payload(
+        chapter=28,
+        accepted_events=[_loop_event("open_loop_closed", "三年之约提及")],
+    )
+    result = writer.apply(close_payload)
+    writer.apply(close_payload)
+
+    store = ScratchpadManager(cfg)
+    assert result["applied"] is True
+    assert store.query(category="open_loop", status="active") == []
+    retired = store.query(category="open_loop", subject="三年之约提及", status="outdated")
+    assert len(retired) == 1
+    assert retired[0].payload["urgency"] == 100.0
+    assert retired[0].payload["planted_chapter"] == 5
+    assert retired[0].payload["expected_payoff"] == "三年后兑现"
+
+    writer.apply(
+        _commit_payload(
+            chapter=5,
+            accepted_events=[
+                _loop_event(
+                    "open_loop_created",
+                    "三年之约提及",
+                    urgency="high",
+                    planted_chapter=5,
+                    expected_payoff="三年后兑现",
+                )
+            ],
+        )
+    )
+    assert store.query(category="open_loop", status="active") == []
+
+
+def test_memory_projection_same_commit_create_then_close_retires_loop(tmp_path):
+    cfg = DataModulesConfig.from_project_root(tmp_path)
+    cfg.ensure_dirs()
+    writer = MemoryProjectionWriter(tmp_path)
+    writer.apply(
+        _commit_payload(
+            chapter=8,
+            accepted_events=[
+                _loop_event("open_loop_created", "黑棺来历"),
+                _loop_event("open_loop_closed", "黑棺来历"),
+            ],
+        )
+    )
+    store = ScratchpadManager(cfg)
+    assert store.query(category="open_loop", status="active") == []
+    assert len(store.query(category="open_loop", subject="黑棺来历", status="outdated")) == 1
+
+
+def test_memory_projection_orphan_close_adds_no_active_loop(tmp_path):
+    cfg = DataModulesConfig.from_project_root(tmp_path)
+    cfg.ensure_dirs()
+    writer = MemoryProjectionWriter(tmp_path)
+    writer.apply(
+        _commit_payload(
+            chapter=9,
+            accepted_events=[_loop_event("open_loop_closed", "从未登记过的旧约")],
+        )
+    )
+    store = ScratchpadManager(cfg)
+    assert store.query(category="open_loop", status=None) == []
+
+
 def _loop_event(event_type, content, chapter=None, **payload_extra):
     payload = {"content": content}
     payload.update(payload_extra)
@@ -701,3 +785,5 @@ def test_router_routes_open_loop_events_to_state(tmp_path):
     router = EventProjectionRouter()
     assert "state" in router.route({"event_type": "open_loop_created"})
     assert "state" in router.route({"event_type": "open_loop_closed"})
+    assert "memory" in router.route({"event_type": "open_loop_created"})
+    assert "memory" in router.route({"event_type": "open_loop_closed"})
