@@ -28,6 +28,8 @@ pnpm check:public
 | packages/embedding-provider | 独立可选模型提供方与原生设置 |
 | scripts/release | 公开源码检查、版本、许可证、发行与安装验收 |
 
+当前源码的工具数量、条件注册和完整名称见 [工具清单](tool-catalog.md)。完整写作环境为 31 个业务工具加 1 个委派工具，共 32 个。
+
 阅读 [书仓契约](book-format.md) 后修改涉及数据的代码。变更行为带回归测试，文件写入复用现有事务、路径和作者授权通道。
 
 安装已构建的 DSH 后，可使用 `packages/bundle/scripts/start-local.mjs`，传入该 CLI 的实际 `lib/bin.js` 路径；启动器动态生成本机 patch，不需要仓库里的绝对路径文件。开发用 patch 与正式安装入口不要同时启用。

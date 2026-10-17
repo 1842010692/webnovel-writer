@@ -1,6 +1,6 @@
 # 维护者命令行安装与包名迁移
 
-新手使用 [DSH 插件管理页面](../user/install.md)。本页供维护已有 Web profile 或离线包的用户使用，配套 DSH 0.2.0-rc.2。
+新手使用 [DSH 插件管理页面](../user/install.md)。本页供维护已有 Web profile 或离线包的用户使用，配套 DSH 0.2.1-rc.2。
 
 ```powershell
 dsh --profile scriptor --from-default-profile web --dump-config

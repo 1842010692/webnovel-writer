@@ -29,7 +29,7 @@ try {
   }
   console.log('[dsh-source] running the real Loader against the same built checkout')
   const vitest = path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs')
-  execFileSync(process.execPath, [vitest, 'run', 'packages/bundle/tests/host-loader.spec.ts'], {
+  execFileSync(process.execPath, [vitest, 'run', 'packages/bundle/tests/host-loader.spec.ts', 'packages/bundle/tests/worker-policy.spec.ts', '--maxWorkers=1'], {
     cwd: repoRoot,
     env: { ...process.env, WEBNOVEL_DSH_SOURCE: host.root },
     stdio: 'inherit',

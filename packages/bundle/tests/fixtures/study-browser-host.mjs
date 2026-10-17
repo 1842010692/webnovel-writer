@@ -81,7 +81,7 @@ export function editorAcceptancePlan(messages) {
 }
 
 export const name = 'webnovel-browser-acceptance'
-export const inject = ['agents', 'agentLoop', 'sessionPersistence', 'workspaceRegistry', 'llm', 'sessionController', 'webServer', ...(process.env.WEBNOVEL_WORKFLOW_CHECK ? ['connection', 'userQuestions'] : []), ...(process.env.WEBNOVEL_INDEX_CHECK ? ['embeddings', 'settings', 'credentials'] : [])]
+export const inject = ['agents', 'agentLoop', 'agentPresets', 'sessionPersistence', 'workspaceRegistry', 'llm', 'sessionController', 'webServer', ...(process.env.WEBNOVEL_WORKFLOW_CHECK ? ['connection', 'userQuestions'] : []), ...(process.env.WEBNOVEL_INDEX_CHECK ? ['embeddings', 'settings', 'credentials'] : [])]
 
 export async function apply(ctx) {
   const root = process.env.WEBNOVEL_BROWSER_WORKSPACE
@@ -191,8 +191,12 @@ export async function apply(ctx) {
   ctx.llm.registerAdapter(['webnovel-acceptance'], new AcceptanceAdapter())
   const workspace = await ctx.workspaceRegistry.create(root, 'S5 临时验收书房')
   const options = { provider: 'webnovel-acceptance', model: 'fixture' }
-  const handle = exists ? await ctx.agents.resume({ resumeSessionId: sessionId, agentOptions: options })
-    : await ctx.agents.create({ sessionId, meta: { cwd: root, title: 'S5 书房验收' }, agentOptions: options })
+  const setup = async scope => { await scope.get('agentPresets').mount(scope, 'scriptor') }
+  const handle = exists ? await ctx.agents.resume({ resumeSessionId: sessionId, agentOptions: options, setup })
+    : await ctx.agents.create({ sessionId, meta: { cwd: root, title: 'S5 书房验收', agentPreset: 'scriptor' }, agentOptions: options, setup })
+  report.tools = ctx.get('tools').schemas(handle.agent).map(tool => tool.name).filter(name => name.startsWith('novel_')).sort()
+  report.skills = (await ctx.get('skills').list({ cwd: root, scope: handle.agent }))
+    .filter(skill => skill.provider === 'webnovel-bundled').map(skill => skill.name).sort()
   if (process.env.WEBNOVEL_RESULT_DEMO) handle.agent.ctx.plugin(present, { maxFiles: 8 })
   const off = ctx.on('agent/status', ({ agent, status }) => {
     if (agent !== handle.agent || status !== 'idle') return
@@ -216,8 +220,8 @@ export async function apply(ctx) {
   const secondWorkspace = await ctx.workspaceRegistry.create(secondRoot, 'S5 空工作范围')
   const secondId = process.env.WEBNOVEL_BROWSER_SESSION ? sessionId + '-second' : 'webnovel-browser-second'
   const secondExists = (await ctx.sessionPersistence.list()).some(snapshot => snapshot.header.id === secondId)
-  const second = secondExists ? await ctx.agents.resume({ resumeSessionId: secondId, agentOptions: options })
-    : await ctx.agents.create({ sessionId: secondId, meta: { cwd: secondRoot, title: 'S5 会话隔离验收' }, agentOptions: options })
+  const second = secondExists ? await ctx.agents.resume({ resumeSessionId: secondId, agentOptions: options, setup })
+    : await ctx.agents.create({ sessionId: secondId, meta: { cwd: secondRoot, title: 'S5 会话隔离验收', agentPreset: 'scriptor' }, agentOptions: options, setup })
   // DSH 0.1.7 restores the most recent workspace on load and ADOPTS an empty-log
   // session in it as its blank "新会话", which displaces the fixture's title and
   // lets the probe's named lookup find nothing. One real turn makes this session

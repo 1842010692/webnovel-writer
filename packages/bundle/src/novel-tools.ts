@@ -1,5 +1,5 @@
 import { validateJsonSchemaValue, type JsonSchemaNode, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
-import { createReferenceTools, REFERENCE_TOOL_NAMES } from './reference/tools'
+import { createReferenceTools } from './reference/tools'
 import type { ReferenceHost } from './reference/host'
 /**
  * 主 Agent 专用 Tools（方案 A：core 能力结构化包装为 Tool）。
@@ -97,6 +97,8 @@ import {
   initialVersion,
   parseDocument,
   serializeDocument,
+  serializeReviewRecord,
+  reviewRecordHashOf,
   type ChapterKey,
   type Concept,
   type ContractParts,
@@ -128,6 +130,7 @@ export interface AgentLike {
     readonly header?: {
       readonly id?: string
       readonly origin?: string
+      readonly parentSession?: string
       /** 会话所附工作区路径（D10：web 多工作区下按会话解析书仓与门禁根）。 */
       readonly cwd?: string
     }
@@ -190,40 +193,8 @@ function provenanceOf(ctx: ToolExecContext | undefined, targets?: readonly strin
   return Object.keys(p).length === 0 ? undefined : p
 }
 
-/**
- * 小说工具名单一事实来源（dsh 运行时对齐批）：作者环境下主 Agent scoped 注册的全集。
- * 一致性由测试保证：本表与 `createNovelTools(stub).map(t => t.name)` 逐项相等。
- */
-export const NOVEL_TOOL_NAMES: readonly string[] = [
-  ...REFERENCE_TOOL_NAMES,
-  'novel_select_book',
-  'novel_create_book',
-  'novel_update_contract',
-  'novel_get_story_status',
-  'novel_search_finalized',
-  'novel_index_manage',
-  'novel_prepare_pack',
-  'novel_settle_chapter',
-  'novel_new_outline_draft',
-  'novel_confirm_outline',
-  'novel_update_skeleton',
-  'novel_update_volume_layout',
-  'novel_roll_window',
-  'novel_confirm_worldbook_entry',
-  'novel_confirm_volume_outline',
-  'novel_assemble_materials',
-  'novel_apply_revision',
-  'novel_apply_revision_batch',
-  'novel_import_draft',
-  'novel_record_review_findings',
-  'novel_record_proposal',
-  'novel_resolve_proposal',
-  'novel_apply_retcon',
-  'novel_record_memory',
-  'novel_note_pending',
-  'novel_get_book_progress',
-  'novel_editor_suggest',
-]
+/** Business-only list, exactly matching createNovelTools. Complete inventory lives in tool-catalog. */
+export { NOVEL_TOOL_NAMES } from './tool-catalog'
 
 /**
  * 测试/走查专用工具：只在 `deps.testTools` 为真时注册，不进 NOVEL_TOOL_NAMES。
@@ -1184,7 +1155,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
     },
     {
       name: 'novel_assemble_materials',
-      description: '组装本章十段基础材料并保留已登记补充。补充先用模式=预览只读核对原文，取得来源读取哈希与材料清单哈希，再用模式=保存提交短引用。补充操作按稳定编号设置/移除，来源限当前书原文或同工作范围书房；索引不是证据。来源变化标过期，不自动替换旧摘录。返回就绪播报，是否开写由主控判断。',
+      description: '组装本章十段基础材料并保留已登记补充。ok 表示操作完成，材料有缺或旧来源过期仍如实报告。卷纲参考中的候选只供选料，不自动进入已选材料；主控核对后以用途=本章卷纲参考登记原文。补充先用模式=预览取得原文、来源读取哈希与材料清单哈希，再用模式=保存提交返回的操作。来源限当前书或同工作范围书房原文，索引不是证据。来源变化保留旧摘录并标过期。是否开写由主控判断。',
       parameters: {
         type: 'object',
         properties: {
@@ -1203,6 +1174,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
                 标题: { type: 'string', description: '设置时必填，自由标题' },
                 理由: { type: 'string', description: '设置时必填，本章为什么需要这段原文' },
                 性质: { type: 'string', enum: ['原文', '建议'], description: '设置时必填，建议不作事实' },
+                用途: { type: 'string', enum: ['本章卷纲参考'], description: '选取本章卷纲依据时填写；须引用本书当前卷纲且性质为原文，普通补充省略' },
                 来源: {
                   type: 'object', required: ['域', '路径'], properties: {
                     域: { type: 'string', enum: ['本书', '书房'] },
@@ -1222,7 +1194,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         schema: {
           type: 'object',
           properties: {
-            ok: { type: 'boolean', description: '是否成功' },
+            ok: { type: 'boolean', description: '本次计算或保存是否完成；不代表材料齐备或允许开写' },
             dir: { type: 'string', description: '材料包目录' },
             状态: { type: 'string', description: '材料包完整状态' },
             gaps: { type: 'array', description: '缺口清单' },
@@ -1230,6 +1202,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             材料清单哈希: { type: 'string', description: '预览时为当前清单哈希，保存时为写入后哈希' },
             合计字数: { type: 'number', description: '基础与补充材料合计字数' },
             补充预览: { type: 'array', description: '核对用原文及带来源读取哈希的操作；保存时只需回传操作，无需转录原文' },
+            卷纲参考: { type: 'object', description: '自动定位结果、供主控核对的候选原文/来源范围、当前计算方案的已登记参考及有效性；预览尚未落盘' },
             message: { type: 'string', description: '结果说明' },
             reason: { type: 'string', description: '失败原因' },
           },
@@ -1253,11 +1226,12 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             // 失败或空补充时可选字段缺席；工具返回值必须是无损 JSON，undefine 会被宿主拒收。
             return { ok: result.ok, dir: result.dir, 状态: result.状态, gaps: result.gaps,
               材料清单哈希: result.已有清单哈希 ?? '', 合计字数: result.合计字数 ?? 0, 补充预览: result.补充预览 ?? [],
-              message: result.ok ? '材料预览未落盘。核对原文后，用返回的操作（含读取哈希）和材料清单哈希保存。' : `材料预览未完成：${result.gaps.join('；')}`,
+              ...(result.卷纲参考 === undefined ? {} : { 卷纲参考: result.卷纲参考 }),
+              message: result.ok ? `材料预览已计算（状态：${result.状态}），未落盘。核对原文后，用返回的操作（含读取哈希）和材料清单哈希保存。` : `材料预览未完成：${result.gaps.join('；')}`,
             }
           }
           const res = assembleMaterials(book.bookRoot, input)
-          if (!res.ok) return { ok: false, 状态: res.状态, gaps: res.gaps, 材料清单哈希: res.材料清单哈希 ?? '', reason: `材料包组装失败：${res.gaps.join(';')}` }
+          if (!res.ok) return { ok: false, dir: res.dir, 状态: res.状态, gaps: res.gaps, 材料清单哈希: res.材料清单哈希 ?? '', reason: `材料包未保存：${res.gaps.join(';')}` }
           const readiness = reportDraftReadiness(book.bookRoot, `草稿区/草稿/卷${String(卷).padStart(2, '0')}-${章名}/`)
           return {
             ok: true,
@@ -1266,7 +1240,8 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             gaps: res.gaps,
             readiness,
             材料清单哈希: res.材料清单哈希, 合计字数: res.合计字数,
-            message: `材料包已组装至 ${res.dir}（状态：${res.状态}${res.gaps.length > 0 ? `；缺:${res.gaps.join('、')}` : ''}）。${readiness?.说明 ?? ''}`,
+            ...(res.卷纲参考 === undefined ? {} : { 卷纲参考: res.卷纲参考 }),
+            message: `材料包已保存至 ${res.dir}（状态：${res.状态}${res.gaps.length > 0 ? `；缺:${res.gaps.join('、')}` : ''}）。${readiness?.说明 ?? ''}`,
           }
         } catch (err) {
           return failureFrom(err, `组装材料包失败：`)
@@ -1496,7 +1471,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
     },
     {
       name: 'novel_record_review_findings',
-      description: '把审读子代理产出的发现项回写进审核记录（堵「空审通过」）。同一模块重复回写＝本轮结果整批替换；跨轮沿用按 模块名+证据位置+问题说明 认亲。全部模块回写仅表示报告齐全；证据须适用当前稿且发现项均有效处置，才能报告审核通过。',
+      description: '把审读子代理产出的发现项回写进审核记录（堵「空审通过」）。返回本模块实际落盘的发现项编号与审核记录哈希，后续处置原样沿用，不缩写或自行拼接编号。同一模块重复回写＝本轮整批替换；跨轮按 模块名+证据位置+问题说明 认亲。全部模块回写仅表示报告齐全；证据须适用当前稿且发现项均有效处置，才能报告审核通过。',
       parameters: {
         type: 'object',
         properties: {
@@ -1524,6 +1499,8 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             待处置数: { type: 'number', description: '仍未处置的发现项数量' },
             待回写模块: { type: 'array', description: '尚未回写的模块名（与「完成」同源：为空即完成）' },
             待继承处置数: { type: 'number', description: '上一轮已给处置中暂存待继承的条数' },
+            发现项编号: { type: 'array', description: '本模块实际落盘的规范编号，按接收的发现项顺序返回；处置时原样使用', items: { type: 'string' } },
+            审核记录哈希: { type: 'string', description: '本次回写的记录 SHA-256，供后续处置使用；其他模块回写后使用最新哈希' },
             message: { type: 'string', description: '结果说明' },
             reason: { type: 'string', description: '失败原因' },
           },
@@ -1539,7 +1516,7 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
         try {
           const r = ingestFindings(book.bookRoot, keyResult.key, String(args['模块名']).trim(), Array.isArray(args['发现项']) ? (args['发现项'] as unknown[]) : [],
             typeof args['审读指纹'] === 'string' ? args['审读指纹'] : undefined)
-          if (!r.ok) return { ok: false, reason: r.reason }
+          if (!r.ok || r.record === null) return { ok: false, reason: r.reason ?? '发现项回写未完成' }
           const 完成 = r.record?.完成 === true
           const 审核通过 = scanChapter(book.bookRoot, keyResult.key).审核完成
           const 待处置数 = r.record?.问题.filter(item => !item.处置状态 || item.处置状态 === '待处理').length ?? 0
@@ -1552,6 +1529,8 @@ export function createNovelTools(deps: NovelToolsDeps): NovelToolDefinition[] {
             待处置数,
             待回写模块: pending,
             待继承处置数,
+            发现项编号: r.record.问题.filter(item => item.模块名 === String(args['模块名']).trim()).map(item => item.发现项编号),
+            审核记录哈希: reviewRecordHashOf(serializeReviewRecord(r.record)),
             message: 审核通过
               ? '发现项已回写，全部模块完成，审核通过。'
               : 完成 ? `全部模块已回写，但审核尚未通过；仍有 ${待处置数} 项待处置，请核对当前证据并完成处置。`

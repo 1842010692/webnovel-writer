@@ -44,8 +44,8 @@ describe('包冒烟', () => {
       systemPrompt: {
         context: (c) => { registeredContexts.push(c as never) },
       },
-      inject: (_deps, cb) => {
-        cb(fakeCtx)
+      inject: (deps, cb) => {
+        if ((deps as string[]).every(name => name in fakeCtx)) cb(fakeCtx)
         return undefined
       },
       on: (e) => { agentCtxEvents.push(e) },

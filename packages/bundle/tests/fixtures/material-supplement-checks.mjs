@@ -45,7 +45,7 @@ export async function checkMaterialSupplements({ root, workspace, main, execute,
     const oldSnapshot = fs.readFileSync(path.join(dir, '补充/decision.md'), 'utf8')
     fs.appendFileSync(source, '作者现在补充了一条意见。\n')
     const stale = await call({})
-    assert.equal(stale.ok, false)
+    assert.equal(stale.ok, true)
     assert.equal(stale.状态, '已过期')
     assert.equal(fs.readFileSync(path.join(dir, '补充/decision.md'), 'utf8'), oldSnapshot)
     assert.equal(core.computeReview(book, key).ok, false)

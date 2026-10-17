@@ -32,12 +32,12 @@ Shared DSH/React peers are provided by the host and are not included in this bun
 | @codemirror/search | 6.7.1 | MIT | [Original notices](licenses/codemirror__search--6.7.1.txt) |
 | @codemirror/state | 6.7.1 | MIT | [Original notices](licenses/codemirror__state--6.7.1.txt) |
 | @codemirror/view | 6.43.8 | MIT | [Original notices](licenses/codemirror__view--6.43.8.txt) |
-| @deepseek-ai/cosmokit | 1.8.5 | MIT | [Original notices](licenses/deepseek-ai__cosmokit--1.8.5.txt) |
-| @deepseek-ai/dsh-brand | 0.2.0-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-brand--0.2.0-rc.2.txt) |
-| @deepseek-ai/dsh-scope | 0.2.0-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-scope--0.2.0-rc.2.txt) |
-| @deepseek-ai/dsh-system-prompt | 0.2.0-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-system-prompt--0.2.0-rc.2.txt) |
-| @deepseek-ai/dsh-util-workspace-path | 0.2.0-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-util-workspace-path--0.2.0-rc.2.txt) |
-| @deepseek-ai/schemastery | 3.18.4 | MIT | [Original notices](licenses/deepseek-ai__schemastery--3.18.4.txt) |
+| @deepseek-ai/cosmokit | 1.8.6 | MIT | [Original notices](licenses/deepseek-ai__cosmokit--1.8.6.txt) |
+| @deepseek-ai/dsh-brand | 0.2.1-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-brand--0.2.1-rc.2.txt) |
+| @deepseek-ai/dsh-scope | 0.2.1-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-scope--0.2.1-rc.2.txt) |
+| @deepseek-ai/dsh-system-prompt | 0.2.1-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-system-prompt--0.2.1-rc.2.txt) |
+| @deepseek-ai/dsh-util-workspace-path | 0.2.1-rc.2 | MIT | [Original notices](licenses/deepseek-ai__dsh-util-workspace-path--0.2.1-rc.2.txt) |
+| @deepseek-ai/schemastery | 3.18.5 | MIT | [Original notices](licenses/deepseek-ai__schemastery--3.18.5.txt) |
 | @lezer/common | 1.5.2 | MIT | [Original notices](licenses/lezer__common--1.5.2.txt) |
 | @lezer/css | 1.3.6 | MIT | [Original notices](licenses/lezer__css--1.3.6.txt) |
 | @lezer/highlight | 1.2.3 | MIT | [Original notices](licenses/lezer__highlight--1.2.3.txt) |
@@ -76,9 +76,9 @@ The release includes source materials and a manifest for these bundled component
 
 ## DSH writing preset basis
 
-The writing preset is adapted from the DSH 0.2.0-rc.2 standard preset (MIT).
+The writing preset is adapted from the DSH 0.2.1-rc.2 standard preset (MIT).
 Copyright (c) 2026 DeepSeek. [Original notice](licenses/dsh-preset.txt).
-Source: https://github.com/deepseek-ai/deepseek-harness/tree/639ed015397290b3745d163aafe02ffee4aa3f84/packages/bundle/web-app/presets
+Source: https://github.com/deepseek-ai/deepseek-harness/tree/687f282e8625c6b8d11ff58211a90524be2e4317/packages/bundle/web-app/presets
 
 ## Archify artwork
 

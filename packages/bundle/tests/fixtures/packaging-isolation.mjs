@@ -22,6 +22,8 @@ const config = [
   { id: 'agent', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-agent')).href },
   { id: 'system-prompt', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-system-prompt')).href },
   { id: 'tools', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-tools')).href },
+  { id: 'fs', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-fs-local')).href, config: { cwd: process.cwd() } },
+  { id: 'working-directory', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-working-directory')).href },
   { id: 'skills', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-skill')).href },
   { id: 'session-projection', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-session-projection')).href },
   { id: 'agent-loop', name: pathToFileURL(require.resolve('@deepseek-ai/dsh-agent-loop')).href },

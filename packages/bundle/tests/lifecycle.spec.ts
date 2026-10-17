@@ -42,9 +42,9 @@ function makeAgentCtx(sink: unknown[], released: string[] = [], injected: string
       context: (c) => { sink.push(c); return () => { released.push('context') } },
       section: () => () => { released.push('section') },
     },
-    inject: (_deps, cb) => {
+    inject: (deps, cb) => {
       injected.push('inject')
-      cb(self)
+      if ((deps as string[]).every(name => name in self)) cb(self)
       return { dispose: async () => { released.push('fiber') } }
     },
     on: () => {},
@@ -357,7 +357,10 @@ describe('B2 per-agent 注册随卸载交回(persona / status / 门禁)', () => 
       context: (c: unknown) => { contexts.push(c); return () => { sectionDisposed.push('context') } },
       section: () => () => { sectionDisposed.push('section') },
     }
-    self.inject = (_d: unknown, cb: (s: unknown) => void) => { cb(self); return { dispose: () => Promise.resolve() } }
+    self.inject = (deps: string[], cb: (s: unknown) => void) => {
+      if (deps.every(name => name in self)) cb(self)
+      return { dispose: () => Promise.resolve() }
+    }
     self.on = () => () => { sectionDisposed.push('on') }
     self.get = (name: string) => (name === 'agentPresets' ? writingPresets : undefined)
 

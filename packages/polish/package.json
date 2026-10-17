@@ -16,7 +16,7 @@
     "@webnovel/drafting": "workspace:*"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.4"
+    "@deepseek-ai/cordis": "4.0.5"
   },
   "license": "GPL-3.0-only",
   "engines": {

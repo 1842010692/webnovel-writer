@@ -224,6 +224,41 @@ describe('聚合 skills 体系（渐进式披露与 Subagent 协同）', () => {
     expect(text).toContain('可回退')
   })
 
+  it('润色工序按语境保护含义，否定示例与两份审读底本不误导删改', () => {
+    const refs = ['1-表达清理.md', '2-节奏与重塑.md'].map((file) =>
+      fs.readFileSync(path.join(__dirname, '../skills/novel-polish/工序', file), 'utf8'))
+    for (const text of refs) {
+      const guard = text.split('## 按需保真核对')[1]?.split('## 第一节')[0]
+      expect(guard).toBeDefined()
+      for (const item of ['信息来源与确定程度', '指称、否定与时间关系', '对白言语行为', '保护的是含义，不是冻结词面', '本批无修改', '未决保真风险']) {
+        expect(guard).toContain(item)
+      }
+    }
+    const negation = refs[0]!.split('\n').find((line) => line.startsWith('| 双重否定'))!
+    expect(negation).toContain('不得不说，他没考虑到')
+    expect(negation).not.toMatch(/他想过|他确实没考虑到/)
+    expect(refs[0]).toContain('读者已知不等于对方已知')
+    expect(refs[1]).toContain('场景之间叙述距离与快慢的合理变化')
+    for (const file of ['全量审读.md', '文风与表达审读.md']) {
+      const text = fs.readFileSync(path.join(__dirname, '../skills/novel-review/底本', file), 'utf8')
+      expect(text).not.toMatch(/5\s*[~～–-]\s*15/)
+      expect(text).toContain('不设')
+    }
+  })
+
+  it('润色派发携带零修改规则，混合批次、风险与复用来源有明确交付约定', () => {
+    const text = readSkill('novel-polish')
+    expect(text).toContain('完整带上下面的**零修改与交付规则**及回传格式')
+    for (const rule of ['批 1 无修改不跳过批 2', '无修改／无修改→复用源稿', '无修改／有修改→只写批 2 稿', '有修改／无修改→只写批 1 稿', '有修改／有修改→两批两版', '已有待审标记正确时不写文件', '不伪造“生成模块: 润色”', '不清空风险', '已有审核证据仍有效时沿用处置', '本轮无修改']) {
+      expect(text).toContain(rule)
+    }
+    expect(text).not.toMatch(/各产一版|每批一版/)
+    const director = readSkill('novel-director')
+    expect(director).toContain('零修改与交付规则')
+    expect(director).toContain('仅实际修改的批次留新版')
+    expect(director).not.toContain('批 1＋批 2 产两版')
+  })
+
   it('最小导出：含范围选择 + 冲突不覆盖 + 清单最后落盘 + 逐字节一致', () => {
     const text = readSkill('novel-export')
     expect(text).toContain('最小导出.mjs')

@@ -149,7 +149,7 @@ async function execTool(tools: ToolRuntimeType, agent: TestAgent, name: string, 
 const approveAnswer = (): { answers: Array<{ id: string; selected: string[] }> } => ({ answers: [{ id: '定稿入档', selected: ['批准'] }] })
 
 describe('dsh 运行时对齐:主 Agent scoped 工具面', () => {
-  it('主 Agent 可见小说工具全集；未装机且无链路的 scope 不可见，NOVEL_TOOL_NAMES 与注册集一致', async () => {
+  it('无原生委派的夹具中，主 Agent 业务工具与 NOVEL_TOOL_NAMES 一致；无关 scope 不可见', async () => {
     resetWorkspaceRoot()
     const ws = mkWorkspace()
     const root = new Context()

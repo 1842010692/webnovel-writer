@@ -20,6 +20,7 @@ import { isBuiltin } from 'node:module'
 import * as esbuild from 'esbuild'
 import { writeNotices } from '../../../scripts/release/notices.mjs'
 import { thinScripts as THIN_SCRIPTS } from './artifact-contract.mjs'
+import { baseline } from './dsh-source.mjs'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'))
@@ -111,6 +112,6 @@ for (const [rel, fn] of THIN_SCRIPTS) {
 console.log(`[bundle] 脚本薄入口接缝校验 ok (${THIN_SCRIPTS.length} 个薄入口 -> lib/index.js)`)
 
 writeNotices(packageRoot, [hostBuild, presetBuild, clientBuild])
-fs.appendFileSync(path.join(packageRoot, 'THIRD_PARTY_NOTICES.md'), '\n## DSH writing preset basis\n\nThe writing preset is adapted from the DSH 0.2.0-rc.2 standard preset (MIT).\nCopyright (c) 2026 DeepSeek. [Original notice](licenses/dsh-preset.txt).\nSource: https://github.com/deepseek-ai/deepseek-harness/tree/639ed015397290b3745d163aafe02ffee4aa3f84/packages/bundle/web-app/presets\n')
+fs.appendFileSync(path.join(packageRoot, 'THIRD_PARTY_NOTICES.md'), `\n## DSH writing preset basis\n\nThe writing preset is adapted from the DSH ${baseline.source.version} standard preset (MIT).\nCopyright (c) 2026 DeepSeek. [Original notice](licenses/dsh-preset.txt).\nSource: https://github.com/deepseek-ai/deepseek-harness/tree/${baseline.source.commit}/packages/bundle/web-app/presets\n`)
 // Vendored diagram artwork is source input rather than an npm dependency.
 fs.appendFileSync(path.join(packageRoot, 'THIRD_PARTY_NOTICES.md'), '\n## Archify artwork\n\nWriting workflow geometry and semantic styling derive from Archify 3.0.1 (MIT).\nCopyright (c) 2026 tt-a1i (Archify); Copyright (c) 2025 Cocoon AI.\n[Original notice](licenses/archify.txt). Source: https://github.com/tt-a1i/archify\n')
