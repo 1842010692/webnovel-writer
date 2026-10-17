@@ -41,6 +41,7 @@ export function materialsCli(argv: readonly string[]): number {
       状态: c.状态,
       dir: c.dir,
       gaps: c.gaps,
+      ...(c.卷纲参考 === undefined ? {} : { 卷纲参考: c.卷纲参考 }),
       合计字数: c.合计字数 ?? 0,
       段: c.段 ?? [],
       文件: (c.文件 ?? []).map((f) => ({ relPath: f.relPath, content: f.content })),

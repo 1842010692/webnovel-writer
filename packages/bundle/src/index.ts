@@ -20,6 +20,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ToolExecutionToken, ToolRuntime } from '@deepseek-ai/dsh-tools'
 import { attachFileGateToAgent } from './gates'
 import { attachDraftLengthFeedbackToAgent } from './draft-length-feedback'
+import { attachWorkerPolicyToAgent } from './worker-policy'
+import { attachWritingDelegationToAgent, writingRoleOf } from './writing-delegation'
 import { isWritingAgent, writingCapabilityOf, type WritingCapability } from './agent-mode'
 import { uniqueBookRoot, scanBooks } from './bookshelf'
 import { attachStatusToAgent, type SystemPromptLike } from './status-context'
@@ -40,6 +42,7 @@ import type { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { SettingsForms } from '@deepseek-ai/dsh-settings'
 
 export const name = 'webnovel-bundle'
+export { NOVEL_TOOL_NAMES, NOVEL_CONDITIONAL_TOOL_NAMES, NOVEL_PRODUCTION_TOOL_NAMES } from './tool-catalog'
 
 /**
  * 确定性检查脚本的 CLI 能力（R21/A1）：薄入口
@@ -329,6 +332,7 @@ export function apply(ctx: Context) {
   // 每会话 agent 装机状态与工具注册产物（effect 可回滚：undo 清空）。
   const installedAgents = new Map<string, AgentLike>()
   const installedModes = new Map<string, WritingCapability | undefined>()
+  const installedRoles = new Map<string, ReturnType<typeof writingRoleOf>>()
   const agentToolOffs = new Map<string, Array<() => void>>()
   const agentRestrictOffs = new Map<string, () => void>()
   let toolKit: { defs: NovelToolDefinition[]; askFn: AskFn | undefined } | undefined
@@ -419,7 +423,7 @@ export function apply(ctx: Context) {
       if (typeof off === 'function') offs.push(off)
     }
     agentToolOffs.set(agent.id, offs)
-    ctx.logger.info(`[webnovel-bundle] 已为主控（${agent.id}）scoped 注册 ${toolKit.defs.length} 个写作工具${toolKit.askFn === undefined ? '（裁决通道缺失，定稿沉淀不可用）' : ''}。`)
+    ctx.logger.info(`[webnovel-bundle] 已为主控（${agent.id}）scoped 注册 ${toolKit.defs.length} 个业务工具${toolKit.askFn === undefined ? '（裁决通道缺失，定稿沉淀不可用）' : ''}。`)
     return true
   }
 
@@ -437,7 +441,7 @@ export function apply(ctx: Context) {
    *  工具尚未注册到祖先层时 restrict 会抛「未知名字」——此时返回 false，
    *  由第三步反应式驱动在工具面就绪后重挂（registerAllInstalled 尾部）。 */
   function restrictNovelToolsInto(agent: AgentLike): boolean {
-    if (!isWritingAgent(agent)) return false
+    if (!isWritingAgent(agent) && writingRoleOf(agent) === undefined) return false
     if (toolKit === undefined) return false
     if (agentRestrictOffs.has(agent.id)) return true
     const tools = agentCtxGet<{ restrict?: (filter: { deny?: readonly string[] }) => () => void }>(agent, 'tools')
@@ -492,6 +496,7 @@ export function apply(ctx: Context) {
       if (installedAgents.get(agent.id) !== agent) return Promise.resolve()
       installedAgents.delete(agent.id)
       installedModes.delete(agent.id)
+      installedRoles.delete(agent.id)
       const offs = [
         ...(agentToolOffs.get(agent.id) ?? []),
         ...(attachments.get(agent.id) ?? []),
@@ -519,6 +524,8 @@ export function apply(ctx: Context) {
     const installFor = (agent: AgentLike, disableWriting = false): void => {
       if (!open) return
       const capability = disableWriting ? undefined : writingCapabilityOf(agent)
+      const isSubagent = !isMainAgent(agent)
+      const role = disableWriting || !isSubagent ? undefined : writingRoleOf(agent)
       const agentId = agent.id
       const agentCtx = agent.ctx as (Context & { readonly systemPrompt?: SystemPromptLike }) | undefined
       if (agentCtx === undefined) return
@@ -526,15 +533,15 @@ export function apply(ctx: Context) {
       const previous = installedAgents.get(agentId)
       const previousMode = installedModes.get(agentId)?.mode ?? 'plain'
       const nextMode = capability?.mode ?? 'plain'
-      if (previous === agent && previousMode === nextMode) return
+      if (previous === agent && previousMode === nextMode && installedRoles.get(agentId) === role) return
       if (previous !== undefined) void detachAgent(previous)
       installedAgents.set(agentId, agent)
       installedModes.set(agentId, capability)
+      installedRoles.set(agentId, role)
       const attached: Array<() => void | Promise<void>> = []
       attachments.set(agentId, attached)
 
       // origin 是持久化历史；服务按当前活体归属区分主控与受委派者。
-      const isSubagent = !isMainAgent(agent)
       // D10：本 agent 会话所附工作区根（会话 cwd 优先，全局认领兜底）。
       const rootOf = (): string | undefined => agentWorkspaceRoot(agent)
       if (capability !== undefined && !isSubagent) {
@@ -557,13 +564,17 @@ export function apply(ctx: Context) {
         }
         // 主 Agent scoped 工具注册（toolKit 未就绪时由第三步反应式补装）。
         registerToolsInto(agent)
-      } else if (capability !== undefined) {
+        const offDelegation = attachWritingDelegationToAgent(agent)
+        if (offDelegation !== undefined) attached.push(offDelegation)
+      } else if (isSubagent && (capability !== undefined || role !== undefined)) {
         // 子 Agent 运行时全封（E2＋R8，运行时对齐批）：
-        // ① tools.restrict({deny}) 收掉小说工具继承面（宿主原生工具面由宿主 toolFilter 负责）；
+        // ① tools.restrict({deny}) 收掉小说工具继承面；原生工具面由预设和角色策略分配；
         //    工具面未就绪时由第三步反应式补挂；
         // ② 原生 subagent 在委派时固定审批策略；插件不再改写会话策略；
         // ③ userQuestions 由 dsh 原生 DELEGATED_CALLER 拒绝，无需插件处理。
         restrictNovelToolsInto(agent)
+        const offWorker = role === undefined ? undefined : attachWorkerPolicyToAgent(agent, role)
+        if (offWorker !== undefined) attached.push(offWorker)
       }
 
       // 文件门禁（无论主 Agent 还是子 Agent 均挂载门禁，确保写入边界）
@@ -591,16 +602,18 @@ export function apply(ctx: Context) {
           const policy = filesystem.sandboxMode === undefined ? undefined
             : agentCtxGet<{ resolve(input: { session?: unknown }): { workspaceRoot: string } }>(caller, 'sandboxPolicy')
           if (filesystem.sandboxMode !== undefined && policy === undefined) throw new Error('文件沙箱策略尚未就绪')
-          const cwd = policy?.resolve(caller?.session ? { session: caller.session } : {}).workspaceRoot ?? caller?.session?.header?.cwd
+          const directories = agentCtxGet<{ ensure(agent: unknown, signal?: AbortSignal): Promise<string> }>(caller, 'workingDirectory')
+          if (directories === undefined || caller === undefined) throw new Error('DSH 工作目录服务尚未就绪')
+          const cwd = await directories.ensure(caller, exec.signal)
           const resolved = await filesystem.resolve(target, {
-            ...(cwd === undefined ? {} : { cwd }), ...(exec.signal === undefined ? {} : { signal: exec.signal }),
+            cwd, ...(exec.signal === undefined ? {} : { signal: exec.signal }),
           })
           return isFullyQualifiedPath(resolved.displayPath) ? canonicalizePath(resolved.displayPath) : undefined
         },
       })
       if (offGate === undefined) ctx.logger.warn(`[webnovel-bundle] 文件门禁未挂载（${agentId}）。`)
       else attached.push(offGate)
-      const offLength = capability === undefined ? undefined : attachDraftLengthFeedbackToAgent(agentCtx as unknown as Parameters<typeof attachDraftLengthFeedbackToAgent>[0], {
+      const offLength = capability === undefined && role === undefined ? undefined : attachDraftLengthFeedbackToAgent(agentCtx as unknown as Parameters<typeof attachDraftLengthFeedbackToAgent>[0], {
         agent, workspaceRoot: rootOf, warn: message => ctx.logger.warn(message),
       })
       if (offLength !== undefined) attached.push(offLength)

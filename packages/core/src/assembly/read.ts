@@ -9,6 +9,15 @@ export function supplementFile(id: string): string {
   return `补充/${id}.md`
 }
 
+/** A purpose is an explicit selection, tied to the current volume's actual source. */
+export function checkSupplementPurpose(purpose: unknown, nature: unknown, source: unknown, volume?: number): void {
+  if (purpose === undefined) return
+  const ref = source as { 域?: unknown; 路径?: unknown } | null
+  if (purpose !== '本章卷纲参考' || nature !== '原文' || !ref || ref.域 !== '本书'
+    || typeof ref.路径 !== 'string' || !/^大纲\/卷规划\/卷\d+\/卷纲\.md$/.test(ref.路径)
+    || (volume !== undefined && ref.路径 !== paths.卷纲(volume))) throw new Error('本章卷纲参考用途必须引用本书当前卷纲原文')
+}
+
 export interface ParsedMaterialManifest {
   readonly raw: Record<string, unknown>
   readonly sections: MaterialSectionRecord[]
@@ -45,6 +54,7 @@ export function parseMaterialManifest(text: string): ParsedMaterialManifest {
         || row['版本'] !== source['读取哈希'] || !Number.isSafeInteger(row['字数'])
         || !Number.isSafeInteger(source['终行']) || Number(source['终行']) < Number(source['起行'])) throw new Error('补充材料字段、编号或路径无效')
       ids.add(row['编号'])
+      checkSupplementPurpose(row['用途'], row['性质'], row['来源快照'])
     } else {
       if (row['类型'] !== undefined || !(材料包十段 as readonly string[]).includes(row['段']) || names.has(row['段'])) throw new Error(`未知或重复基础材料段：${row['段']}`)
       names.add(row['段'])
@@ -107,6 +117,8 @@ export function loadMaterialPackage(bookRoot: string, key: { 卷: number; 章: n
     }
   }
   for (const item of supplements) {
+    try { checkSupplementPurpose(item.用途, item.性质, item.来源快照, key.卷) }
+    catch { 问题.push(`补充用途与当前卷不符：${item.编号}`); proofs.push({ id: item.编号, invalidPurpose: true }); continue }
     let snapshot: { text: string; hash: string }
     try { snapshot = readMaterialFile(root, `${dir}/${item.文件}`) }
     catch { 问题.push(`补充附件不可读：${item.编号}`); proofs.push({ id: item.编号, missing: true }); continue }
@@ -123,6 +135,7 @@ export function loadMaterialPackage(bookRoot: string, key: { 卷: number; 章: n
     段[`补充/${item.编号}：${item.段}`] = [
       `【补充${stale ? '·已过期' : ''}】${item.段}（${item.性质}；不是自动确认的事实）`,
       `选用理由：${item.选用原因}`,
+      ...(item.用途 ? [`用途：${item.用途}`] : []),
       `来源：${item.来源快照.域}/${item.来源快照.路径}:${item.来源快照.起行}-${item.来源快照.终行}；读取哈希：${item.来源快照.读取哈希}`,
       snapshot.text,
     ].join('\n')

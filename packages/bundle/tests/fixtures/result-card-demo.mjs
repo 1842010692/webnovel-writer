@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url'
 export function prepareResultCardDemo(root) {
   const book = path.join(root, '验收作品甲')
   const target = path.join(root, '演示导出')
-  const script = fileURLToPath(new URL('../../skills/novel-export/scripts/最小导出.mjs', import.meta.url))
+  const script = process.env.WEBNOVEL_TEST_PACKAGE
+    ? path.join(process.env.WEBNOVEL_TEST_PACKAGE, 'skills/novel-export/scripts/最小导出.mjs')
+    : fileURLToPath(new URL('../../skills/novel-export/scripts/最小导出.mjs', import.meta.url))
   const run = (...args) => JSON.parse(execFileSync(process.execPath, [script, '--book', book, ...args], { encoding: 'utf8', windowsHide: true }))
   const computed = run()
   if (!computed.ok) throw new Error(JSON.stringify(computed.gaps))

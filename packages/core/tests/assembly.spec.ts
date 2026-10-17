@@ -63,10 +63,17 @@ describe('写作备料(格式规格 §9.2)', () => {
     expect(fs.existsSync(path.join(root, paths.材料包目录(1, '开篇任务'), '材料清单.json'))).toBe(false)
   })
 
-  it('after confirmOutline + assemble → 清单 段齐备, derive 建议写稿, compute/write 同源', () => {
+  it('确认细纲并显式选择卷纲候选 → 段齐备，compute/write 同源', () => {
     const root = mkBook()
     confirmReady(root)
-    const r = assembleMaterials(root, key)
+    const base = computeMaterials(root, key)
+    expect(base).toMatchObject({ ok: true, 状态: '段有缺' })
+    const candidate = base.卷纲参考!.候选[0]!
+    const preview = computeMaterials(root, { ...key, 仅预览: true, 补充操作: [{
+      操作: '设置', 编号: 'volume', 标题: '本章卷纲依据', 理由: '已核对本章起止范围',
+      性质: '原文', 用途: '本章卷纲参考', 来源: candidate.来源,
+    }] })
+    const r = assembleMaterials(root, { ...key, 材料清单哈希: preview.已有清单哈希, 补充操作: preview.补充预览!.map(p => p.操作) })
     expect(r.ok).toBe(true)
     expect(r.状态).toBe('段齐备')
 
@@ -87,7 +94,7 @@ describe('写作备料(格式规格 §9.2)', () => {
     confirmReady(root)
     removeSync(path.join(root, '世界书/人物档案/主角.md'))
     const r = assembleMaterials(root, key)
-    expect(r.ok).toBe(false)
+    expect(r.ok).toBe(true)
     expect(r.状态).toBe('段有缺')
     expect(r.gaps.some((g) => g.includes('世界书/人物档案/主角.md'))).toBe(true)
 

@@ -1,4 +1,4 @@
-# Based on DSH dsh-v0.2.0-rc.2 (639ed015397290b3745d163aafe02ffee4aa3f84) standard preset.
+# Based on DSH dsh-v0.2.1-alpha.4 (86a402200d95fecef4529d969836f1fe13c6cb0d) standard preset.
 # Canonical definition: packages/bundle/presets/writing.patch.yml; meta ships an identical copy.
 - insert:
     - id: preset-scriptor
@@ -12,7 +12,6 @@
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
-              suffix: Your working directory is {{cwd}}.
               prefix: You are an assistant powered by the {{model}} model.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
@@ -96,20 +95,17 @@
                   provider: spawn
                   toolName: subagent
                   modelSelectionSettings: true
-                  backgroundMode: continuable
               - id: tool-subagent-fork
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:
                   provider: fork
                   toolName: subagent_fork
-                  backgroundMode: continuable
               - id: tool-subagent-codex
                 name: '@deepseek-ai/dsh-tool-subagent'
                 disabled: true
                 config:
                   provider: codex
                   toolName: subagent_codex
-                  backgroundMode: one-shot
                   maxDepth: provider-managed
               - id: tool-subagent-claude-code
                 name: '@deepseek-ai/dsh-tool-subagent'
@@ -117,7 +113,6 @@
                 config:
                   provider: claude-code
                   toolName: subagent_claude_code
-                  backgroundMode: one-shot
                   maxDepth: provider-managed
               - id: workflow-ptc
                 name: '@deepseek-ai/dsh-workflow-ptc'

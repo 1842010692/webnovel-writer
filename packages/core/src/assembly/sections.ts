@@ -40,7 +40,7 @@ export interface SupplementSource {
 
 export type SupplementEdit =
   | { readonly 操作: '移除'; readonly 编号: string }
-  | { readonly 操作: '设置'; readonly 编号: string; readonly 标题: string; readonly 理由: string; readonly 性质: '原文' | '建议'; readonly 来源: SupplementSource }
+  | { readonly 操作: '设置'; readonly 编号: string; readonly 标题: string; readonly 理由: string; readonly 性质: '原文' | '建议'; readonly 来源: SupplementSource; readonly 用途?: '本章卷纲参考' }
 
 export interface SupplementRecord extends Omit<SectionRecord, '段'> {
   readonly 类型: '补充'
@@ -50,6 +50,7 @@ export interface SupplementRecord extends Omit<SectionRecord, '段'> {
   readonly 文件: string
   readonly 内容哈希: string
   readonly 性质: '原文' | '建议'
+  readonly 用途?: '本章卷纲参考'
   readonly 适用章上限: number
   readonly 来源快照: SupplementSource & { readonly 起行: number; readonly 终行: number; readonly 读取哈希: string }
 }

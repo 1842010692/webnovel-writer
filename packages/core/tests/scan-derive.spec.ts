@@ -7,6 +7,7 @@ import { deriveChapterFacts } from '../src/derive/derive'
 import { draftHashOf, reviewInputFingerprintOf } from '../src/evidence/record'
 import { parseDocument } from '../src/repo/frontmatter'
 import { serializeDocument } from '../src/repo/frontmatter'
+import { findPendingReviewDraft, listChapterDrafts } from '../src/repo/drafts'
 
 const roots: string[] = []
 function mkBook(): string {
@@ -123,6 +124,105 @@ describe('扫描器→推导端到端(真实文件树)', () => {
     put(root, '草稿区/章细纲/卷01-铺垫.md', md({ 状态: '候选' }))
     const keys = listChapters(root)
     expect(keys.map((k) => k.章名).sort()).toEqual(['铺垫'])
+  })
+})
+
+describe('润色交付状态兼容性（文件夹具，不模拟模型遵循指令）', () => {
+  const dir = '草稿区/草稿/卷01-初见'
+  const body = '他没打算走，嘴角牵出一点苦笑。\n\n## 草稿候选事实\n\n- 他留在门口。\n'
+  const sourceFields = {
+    身份: key, 版本: 1, 父版本: null, 生成模块: '写稿',
+    来源快照: { 细纲: '0003-初见.md@1' }, 保真风险: [],
+  }
+
+  it('零修改仅提升源稿角色：保留正文/候选/来源，重复扫描不产生稿件或返回润色', () => {
+    const root = mkBook()
+    const source = md({ ...sourceFields, 角色: '草稿', 选定: true }, body)
+    put(root, `${dir}/稿1.md`, source)
+    expect(deriveChapterFacts(scanChapter(root, key)).建议.环节).toBe('润色')
+    // 模拟已完成的原生元数据 edit，保持正文部分逐字不动。
+    const promoted = source.replace('角色: 草稿', '角色: 待审稿')
+    put(root, `${dir}/稿1.md`, promoted)
+    for (let i = 0; i < 2; i++) {
+      expect(deriveChapterFacts(scanChapter(root, key)).建议.环节).toBe('审核')
+      expect(findPendingReviewDraft(root, key)?.file).toBe('稿1.md')
+    }
+    const doc = parseDocument(promoted)
+    expect(doc.ok).toBe(true)
+    if (!doc.ok) throw new Error(doc.detail)
+    expect(doc.data.body).toBe(body)
+    expect(doc.data.fields).toEqual({ ...sourceFields, 角色: '待审稿', 选定: true })
+    expect(fs.readdirSync(path.join(root, dir))).toEqual(['稿1.md'])
+    expect(fs.readFileSync(path.join(root, dir, '稿1.md'), 'utf8')).toBe(promoted)
+  })
+
+  it.each([
+    { 批次: '无修改/无修改', 稿件: [body], 模块: '写稿' },
+    { 批次: '无修改/有修改', 稿件: [body, body.replace('，', '。')], 模块: '润色' },
+    { 批次: '有修改/无修改', 稿件: [body, body.replace('走，', '离开，')], 模块: '润色' },
+    { 批次: '有修改/有修改', 稿件: [body, body.replace('走，', '离开，'), body.replace('走，', '离开。')], 模块: '润色' },
+  ])('$批次：实际交付版本可被扫描与待审读取共同识别', ({ 稿件, 模块 }) => {
+    const root = mkBook()
+    for (const [i, text] of 稿件.entries()) {
+      put(root, `${dir}/稿${i + 1}.md`, md({
+        ...sourceFields, 版本: i + 1, 父版本: i === 0 ? null : i,
+        生成模块: i === 0 ? '写稿' : '润色',
+        角色: i === 稿件.length - 1 ? '待审稿' : '草稿', 选定: i === 稿件.length - 1,
+      }, text))
+    }
+    const drafts = listChapterDrafts(root, key)
+    expect(drafts.filter((d) => d.选定)).toHaveLength(1)
+    expect(drafts.filter((d) => d.角色 === '待审稿')).toHaveLength(1)
+    expect(new Set(drafts.map((d) => d.body)).size).toBe(稿件.length)
+    for (const draft of drafts) expect(draft.body.split('## 草稿候选事实')[1]).toBe(body.split('## 草稿候选事实')[1])
+    const pending = findPendingReviewDraft(root, key)!
+    expect(pending.版本).toBe(稿件.length)
+    expect(parseDocument(pending.text)).toMatchObject({ ok: true, data: { fields: { 生成模块: 模块 } } })
+    expect(deriveChapterFacts(scanChapter(root, key)).建议.环节).toBe('审核')
+  })
+
+  it('风险结果留草稿：不取代安全待审稿；没有安全待审时不伪装完成', () => {
+    const root = mkBook()
+    const safe = md({ ...sourceFields, 角色: '待审稿', 选定: true }, body)
+    put(root, `${dir}/稿1.md`, safe)
+    put(root, `${dir}/稿2.md`, md({ ...sourceFields, 版本: 2, 父版本: 1, 生成模块: '润色', 角色: '草稿', 选定: false, 保真风险: ['意图强度待确认'] }, body.replace('没打算', '不想')))
+    expect(findPendingReviewDraft(root, key)?.text).toBe(safe)
+    expect(listChapterDrafts(root, key).filter((d) => d.选定)).toHaveLength(1)
+    const riskOnly = mkBook()
+    put(riskOnly, `${dir}/稿1.md`, md({ ...sourceFields, 角色: '草稿', 选定: false, 保真风险: ['否定作用域待确认'] }, body))
+    expect(findPendingReviewDraft(riskOnly, key)).toBeNull()
+    expect(deriveChapterFacts(scanChapter(riskOnly, key)).建议.环节).toBe('润色')
+  })
+
+  it('降级后中断可留零待审，恢复提升已有中间稿，无需再创建版本', () => {
+    const root = mkBook()
+    put(root, `${dir}/稿1.md`, md({ ...sourceFields, 角色: '草稿', 选定: false }, body))
+    const intermediate = md({ ...sourceFields, 版本: 2, 父版本: 1, 生成模块: '润色', 角色: '草稿', 选定: false }, body.replace('走，', '离开，'))
+    put(root, `${dir}/稿2.md`, intermediate)
+    expect(findPendingReviewDraft(root, key)).toBeNull()
+    put(root, `${dir}/稿2.md`, intermediate.replace('角色: 草稿', '角色: 待审稿').replace('选定: false', '选定: true'))
+    expect(deriveChapterFacts(scanChapter(root, key)).建议.环节).toBe('审核')
+    expect(findPendingReviewDraft(root, key)?.版本).toBe(2)
+    expect(listChapterDrafts(root, key)).toHaveLength(2)
+  })
+
+  it('复用稿件沿用有效审核证据，细纲变化后仍要求重审', () => {
+    const root = mkBook()
+    put(root, `${dir}/稿1.md`, md({ ...sourceFields, 角色: '待审稿', 选定: true }, body))
+    const outline = md({ 状态: '已确认' }, '他决定留下。')
+    put(root, '大纲/卷规划/卷01/章细纲/0003-初见.md', outline)
+    put(root, '草稿区/审核/卷01-初见.json', JSON.stringify({
+      schemaVersion: 1, 完成: true, 问题: [],
+      模块: { 文本规范检查: { 完成: true, 失败: false } },
+      审稿哈希: draftHashOf(body),
+      审读指纹: reviewInputFingerprintOf({ 正文: body, 细纲: outline, 材料清单: null }),
+    }))
+    expect(scanChapter(root, key).审核证据过期).toBe(false)
+    expect(deriveChapterFacts(scanChapter(root, key)).建议.环节).toBe('定稿准备与沉淀')
+    put(root, '大纲/卷规划/卷01/章细纲/0003-初见.md', md({ 状态: '已确认' }, '留下并确认来信。'))
+    expect(scanChapter(root, key).审核证据过期).toBe(true)
+    expect(deriveChapterFacts(scanChapter(root, key)).建议.环节).toBe('审核')
+    expect(listChapterDrafts(root, key)).toHaveLength(1)
   })
 })
 

@@ -5,7 +5,7 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { listChapters, parseWindow, type ChapterKey } from '../derive/scan'
+import { listChapters, type ChapterKey } from '../derive/scan'
 import { entryChapterNo as ledgerEntryChapterNo, queryDueLedger, queryLedger, queryMemory, type LedgerEntry } from '../ledger'
 import { parseOutline } from '../outline/parse'
 import { extractVersionFields } from '../provenance'
@@ -21,6 +21,7 @@ import { appendSupplements, type SupplementPreview } from './supplements'
 import { readMaterialFile } from './source'
 import { canonicalizePath } from '../gate/canonical'
 import { parseChapterLength, renderChapterLength } from '../design/chapter-length'
+import { findVolumeReferences, type VolumeReferenceReport } from './volume-reference'
 
 /** F4:时序未定条目的来源与不确定性标注行。 */
 function withTimingNote(text: string, entry: LedgerEntry): string {
@@ -38,6 +39,7 @@ export interface AssembleInput {
 }
 
 export interface AssembleResult {
+  /** Operation success; material completeness is reported separately in 状态/gaps. */
   readonly ok: boolean
   readonly 状态: 材料包状态
   readonly dir: string
@@ -45,10 +47,12 @@ export interface AssembleResult {
   readonly 材料清单哈希?: string
   readonly 合计字数?: number
   readonly 补充预览?: readonly SupplementPreview[]
+  readonly 卷纲参考?: VolumeReferenceReport
 }
 
 /** 纯算结果(R21 切割):`文件` 是精确写盘载荷,供写入器落盘与脚本 stdout 共用。 */
 export interface ComputedMaterials {
+  /** True when a valid material payload was computed, even when sections have gaps. */
   readonly ok: boolean
   readonly 状态: 材料包状态
   readonly dir: string
@@ -59,6 +63,7 @@ export interface ComputedMaterials {
   readonly 已有清单哈希?: string
   readonly 候选清单哈希?: string
   readonly 补充预览?: readonly SupplementPreview[]
+  readonly 卷纲参考?: VolumeReferenceReport
 }
 
 export interface MaterialManifest {
@@ -261,9 +266,6 @@ function computeBaseMaterials(bookRoot: string, input: AssembleInput): ComputedM
 
   const 契约 = readText(bookRoot, paths.契约())
   const 卷纲 = readText(bookRoot, paths.卷纲(input.卷))
-  const 窗口 = readText(bookRoot, paths.近期窗口(input.卷))
-
-  const windowItem = 窗口 === null ? null : parseWindow(窗口).find((e) => e.name === input.章名) ?? null
   const 信息边界 = parsed.定位['信息边界'] ?? ''
   const 时空 = parsed.定位['时空锚定'] ?? ''
 
@@ -387,7 +389,7 @@ function computeBaseMaterials(bookRoot: string, input: AssembleInput): ComputedM
     ? (activeEntries.length === 0 ? '空' : '完整')
     : (ledgerResult.kind === 'parse-error' ? '残缺' : (activeEntries.length === 0 ? '空' : '完整'))
 
-  // ── 暂定与警告:契约文风、卷纲本章窗口段 ＋ 暂定/留白行 ──
+  // ── 暂定与警告:契约文风与暂定/留白行;卷纲候选仅供选料,已选原文经补充登记 ──
   const 契约Body = 契约 === null ? null : bodyOnly(契约)
   const 卷纲Body = 卷纲 === null ? null : bodyOnly(卷纲)
   const 契约禁区 = 契约Body === null ? null : extractSection(契约Body, '创作禁区与不可妥协项')
@@ -396,34 +398,7 @@ function computeBaseMaterials(bookRoot: string, input: AssembleInput): ComputedM
     const section = 契约Body === null ? null : extractSection(契约Body, title)
     if (section !== null && section !== '') 暂定Parts.push(`### 契约·${title}\n\n${section}`)
   }
-  const windowName = windowItem?.name ?? input.章名
-  let 卷纲段: string | null = null
-  if (卷纲Body !== null) {
-    const lines = 卷纲Body.split('\n')
-    let currentTitle = ''
-    const sections = new Map<string, string>()
-    for (const line of lines) {
-      const m = /^#{2,3}\s+(.+?)\s*$/.exec(line.trim())
-      if (m !== null) {
-        currentTitle = m[1]!
-        sections.set(currentTitle, '')
-        continue
-      }
-      if (currentTitle !== '') sections.set(currentTitle, `${sections.get(currentTitle) ?? ''}${line}\n`)
-    }
-    const scaffold = ['叙事结构', '弧线', '线索推进', '卷末兑现']
-    for (const [title, text] of sections) {
-      if (!scaffold.some((name) => title === name || title.startsWith(`${name} `))) continue
-      if (title.includes(windowName) || text.includes(windowName)) {
-        卷纲段 = `## ${title}${text.trim()}`
-        break
-      }
-    }
-  }
-  if (卷纲 !== null && 卷纲段 === null) {
-    gaps.push(`卷纲中未找到对应窗口内容:四段内无小节命中「${windowName}」,请直读 大纲/卷规划/卷${String(input.卷).padStart(2, '0')}/卷纲.md`)
-  }
-  if (卷纲段 !== null) 暂定Parts.push(`### 卷纲·本章窗口\n\n${卷纲段}`)
+  const 卷纲参考 = findVolumeReferences(卷纲, input.卷, input.章名)
   const 暂定行 = [契约Body ?? '', 卷纲Body ?? ''].join('\n').split('\n').filter((line) => line.includes('〔暂定〕') || line.includes('〔留白〕'))
   if (暂定行.length > 0) 暂定Parts.push(['### 暂定与留白', '', ...暂定行].join('\n'))
   const 暂定Body = 暂定Parts.join('\n\n') || '（无）'
@@ -531,8 +506,8 @@ function computeBaseMaterials(bookRoot: string, input: AssembleInput): ComputedM
       body: 暂定Body,
       来源: 暂定Sources,
       版本: '',
-      选用原因: '契约文风、卷纲本章窗口段、暂定留白行',
-      完整性: 契约Body !== null && extractSection(契约Body, '叙事方式与文风基调') !== null && 契约禁区 !== null && 卷纲段 !== null
+      选用原因: '契约文风、暂定留白行与已登记卷纲参考',
+      完整性: 契约Body !== null && extractSection(契约Body, '叙事方式与文风基调') !== null && 契约禁区 !== null
         ? '完整'
         : 暂定Body === '（无）' ? '空' : '残缺',
     },
@@ -550,6 +525,9 @@ function computeBaseMaterials(bookRoot: string, input: AssembleInput): ComputedM
   }
   if (built.来源与版本清单.完整性 !== '完整' && sourceLines.length === 0) {
     gaps.push('来源清单为空')
+  }
+  if (built.暂定与警告.完整性 !== '完整') {
+    gaps.push('契约文风或创作禁区分部缺失：卷纲参考登记不能补齐这些契约依据')
   }
 
   const 状态: 材料包状态 = gaps.length === 0 ? '段齐备' : '段有缺'
@@ -579,7 +557,7 @@ function computeBaseMaterials(bookRoot: string, input: AssembleInput): ComputedM
     content: serializeMachineJson({ 状态, 合计字数, 段: records }, MACHINE_SCHEMA_VERSION),
   })
 
-  return { ok: 状态 === '段齐备', 状态, dir, gaps, 合计字数, 段: records, 文件 }
+  return { ok: true, 状态, dir, gaps, 合计字数, 段: records, 文件, 卷纲参考 }
 }
 
 export function computeMaterials(bookRoot: string, input: AssembleInput): ComputedMaterials {
@@ -598,14 +576,14 @@ function assembleMaterialsLocked(bookRoot: string, input: AssembleInput): Assemb
   } else {
     writeBatchAtomic(bookRoot, c.文件)
   }
-  return { ok: c.ok, 状态: c.状态, dir: c.dir, gaps: c.gaps, 材料清单哈希: c.候选清单哈希, 合计字数: c.合计字数, 补充预览: c.补充预览 }
+  return { ok: c.ok, 状态: c.状态, dir: c.dir, gaps: c.gaps, 材料清单哈希: c.候选清单哈希, 合计字数: c.合计字数, 补充预览: c.补充预览, 卷纲参考: c.卷纲参考 }
 }
 
 const writeMaterials = bookWriter(assembleMaterialsLocked)
 export function assembleMaterials(bookRoot: string, input: AssembleInput): AssembleResult {
   if (input.仅预览) {
     const c = computeMaterials(bookRoot, input)
-    return { ok: c.ok, 状态: c.状态, dir: c.dir, gaps: c.gaps, 材料清单哈希: c.已有清单哈希, 合计字数: c.合计字数, 补充预览: c.补充预览 }
+    return { ok: c.ok, 状态: c.状态, dir: c.dir, gaps: c.gaps, 材料清单哈希: c.已有清单哈希, 合计字数: c.合计字数, 补充预览: c.补充预览, 卷纲参考: c.卷纲参考 }
   }
   return writeMaterials(bookRoot, input)
 }

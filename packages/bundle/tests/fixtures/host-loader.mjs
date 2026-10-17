@@ -6,6 +6,7 @@ import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
+import { parse } from 'yaml'
 import { baseline, loadSourceHost } from '../../scripts/dsh-source.mjs'
 import { checkNativeWrites } from './native-write-checks.mjs'
 import { checkReliability } from './reliability-checks.mjs'
@@ -16,9 +17,12 @@ import { checkSearch } from './retrieval-checks.mjs'
 import { checkSaveLoop } from './save-loop-check.mjs'
 import { checkReferences } from './reference-checks.mjs'
 import { checkDraftLength } from './draft-length-checks.mjs'
+import { checkWorkerPolicy } from './worker-policy-checks.mjs'
 
 const root = path.resolve(process.argv[2])
 const bundleUrl = pathToFileURL(path.resolve(process.argv[3])).href
+const { NOVEL_TOOL_NAMES, NOVEL_CONDITIONAL_TOOL_NAMES, NOVEL_PRODUCTION_TOOL_NAMES } = await import(bundleUrl)
+const toolCatalog = { business: NOVEL_TOOL_NAMES, conditional: NOVEL_CONDITIONAL_TOOL_NAMES, production: NOVEL_PRODUCTION_TOOL_NAMES }
 const workspace = path.join(root, 'workspace')
 const require = createRequire(import.meta.url)
 const host = process.env.WEBNOVEL_DSH_SOURCE === undefined ? undefined : loadSourceHost(process.env.WEBNOVEL_DSH_SOURCE)
@@ -42,6 +46,17 @@ const check = async (name, fn) => {
 }
 
 const profile = [
+  { id: 'persona', name: '@deepseek-ai/dsh-persona', config: parse(
+    fs.readFileSync(new URL('../../presets/writing.patch.yml', import.meta.url), 'utf8'),
+    { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: value => value }] },
+  )[0].insert[0].config.plugins.find(row => row.id === 'persona').config },
+  ...(process.argv[4] === 'worker-policy' ? [
+    { id: 'subagents', name: '@deepseek-ai/dsh-subagent' },
+    { id: 'spawn', name: '@deepseek-ai/dsh-subagent-spawn-in-process' },
+    { id: 'subagent-tool', name: '@deepseek-ai/dsh-tool-subagent', config: {
+      provider: 'spawn', toolName: 'subagent', allowedAgentPresets: ['standard'],
+    } },
+  ] : []),
   { id: 'llm', name: '@deepseek-ai/dsh-llm' },
   { id: 'session', name: '@deepseek-ai/dsh-session' },
   { id: 'agent', name: '@deepseek-ai/dsh-agent' },
@@ -53,6 +68,7 @@ const profile = [
   { id: 'approval', name: '@deepseek-ai/dsh-user-approval', config: { policy: 'ask' } },
   { id: 'user-questions', name: '@deepseek-ai/dsh-user-questions' },
   { id: 'fs', name: '@deepseek-ai/dsh-fs-local', config: { cwd: workspace } },
+  { id: 'working-directory', name: '@deepseek-ai/dsh-working-directory', config: { defaultDirectory: workspace } },
   { id: 'fs-observation-policy', name: '@deepseek-ai/dsh-fs-observation-policy' },
   { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
   { id: 'storage', name: '@deepseek-ai/dsh-storage' },
@@ -107,6 +123,7 @@ const presentation = async agent => {
   return {
     persona: assembled.sections.filter(section => section.name === 'deployment:persona-prefix'),
     status: assembled.contexts.filter(context => context.name === 'webnovel.status'),
+    worker: assembled.sections.filter(section => section.name === 'webnovel.worker-policy'),
   }
 }
 const toggle = async (id, disabled) => {
@@ -127,6 +144,8 @@ try {
     await checkSaveLoop({ root, book, workspace, ctx, service, git, check, report, host })
   } else if (process.argv[4] === 'draft-length') {
     await checkDraftLength({ root, book, workspace, ctx, service, check, report, host, execute, toggle, settingsProfile })
+  } else if (process.argv[4] === 'worker-policy') {
+    await checkWorkerPolicy({ root, book, workspace, ctx, service, check, report, host, execute, toggle, settingsProfile, toolCatalog })
   } else {
   await check('真实 Loader 与基线版本', async () => {
     for (const row of profile.filter(row => row.name.startsWith('@deepseek-ai/dsh-'))) {
@@ -168,20 +187,48 @@ try {
       const denied = await execute(ordinary.agent, 'write', { file_path: chapter, content: 'cannot overwrite a book' })
       assert.equal(denied.isError, true)
       assert.ok(fs.readFileSync(chapter, 'utf8').includes('原定稿正文'))
-      assert.equal(schemas(main).length, 31)
+      assert.equal(schemas(main).length, toolCatalog.business.length)
       report.writingMode = { separateTools: true, separateContext: true, separateSkills: true, ordinaryRelativePath: true, bookStillProtected: true }
     } finally { off(); await delegated.dispose(); await ordinary.dispose() }
   })
 
   await check('主 Agent 工具与全局隔离', async () => {
     assert.equal(main.session.header.version, host === undefined ? baseline.registry.sessionFormat : baseline.source.sessionFormat)
-    assert.equal(schemas(main).length, 31)
+    assert.equal(schemas(main).length, toolCatalog.business.length)
     assert.deepEqual(schemas(undefined), [])
     const result = await execute(main, 'novel_select_book', { bookId: 'loader-book' })
     assert.equal(result.value.ok, true, JSON.stringify(result))
     assert.match(result.value.message, /【当前书】/)
     assert.equal(typeof result.value.近况, 'string')
     assert.ok(result.value.近况.length > 0)
+  })
+  await check('当前目录变更与恢复不改变书仓保护或同级目录', async () => {
+    const directories = service('workingDirectory')
+    const original = main.session.header.cwd
+    const before = fs.readFileSync(chapter, 'utf8')
+    const ephemeral = path.join(workspace, 'temporary-cwd')
+    fs.mkdirSync(ephemeral)
+    try {
+      await directories.set(main, book)
+      assert.equal(main.session.header.cwd, original)
+      assert.equal(directories.get(child.session), original)
+      const relative = path.relative(book, chapter)
+      assert.equal((await execute(main, 'read', { file_path: relative })).isError, false)
+      const denied = await execute(main, 'write', { file_path: relative, content: '不能按旧目录判断后覆盖定稿' })
+      assert.equal(denied.isError, true)
+      assert.equal(fs.readFileSync(chapter, 'utf8'), before)
+      assert.equal((await execute(main, 'novel_select_book', { bookId: 'loader-book' })).value.ok, true)
+      await directories.set(main, ephemeral)
+      const saved = await execute(main, 'write', { file_path: 'relative.txt', content: 'current directory' })
+      assert.equal(saved.isError, false, JSON.stringify(saved))
+      assert.equal(fs.readFileSync(path.join(ephemeral, 'relative.txt'), 'utf8'), 'current directory')
+      assert.equal(fs.existsSync(path.join(workspace, 'relative.txt')), false)
+      fs.unlinkSync(path.join(ephemeral, 'relative.txt'))
+      fs.rmdirSync(ephemeral)
+      assert.equal(await directories.ensure(main), original)
+      assert.equal(directories.get(child.session), original)
+      report.workingDirectory = { relativeTargetProtected: true, originalProjectRetained: true, siblingUnchanged: true, removedDirectoryRecovered: true }
+    } finally { await directories.set(main, original) }
   })
   await check('子 Agent 工具拒绝且保留宿主审批策略', async () => {
     assert.deepEqual(schemas(child), [])
@@ -270,8 +317,10 @@ try {
       assert.ok(!service('agents').roots().includes(unmarked.agent))
       assert.ok(service('agents').roots().includes(restoredRoot.agent))
       assert.deepEqual(schemas(unmarked.agent), [])
-      assert.equal(schemas(restoredRoot.agent).length, 31)
+      assert.equal(schemas(restoredRoot.agent).length, toolCatalog.business.length)
       assert.equal(service('approval').overrideOf(unmarked.agent.session), undefined)
+      assert.equal((await presentation(unmarked.agent)).worker.length, 0)
+      assert.equal((await presentation(restoredRoot.agent)).worker.length, 0)
       assert.notEqual(service('approval').overrideOf(restoredRoot.agent.session), 'never')
     } finally {
       await unmarked.dispose()
@@ -280,12 +329,12 @@ try {
   })
   await check('同一会话恢复后重新装机', async () => {
     const previous = await createPresetAgent(service('agents'), { sessionId: 'loader-resume', meta: { cwd: workspace } })
-    assert.equal(schemas(previous.agent).length, 31)
+    assert.equal(schemas(previous.agent).length, toolCatalog.business.length)
     await service('sessionPersistence').flush()
     await previous.dispose()
     const resumed = await resumePresetAgent(service('agents'), { resumeSessionId: 'loader-resume' })
     try {
-      assert.equal(schemas(resumed.agent).length, 31)
+      assert.equal(schemas(resumed.agent).length, toolCatalog.business.length)
       assert.match((await presentation(resumed.agent)).status[0].text, /【工作区总览】/)
     }
     finally { await resumed.dispose() }
@@ -295,7 +344,7 @@ try {
     const whileMissing = schemas(main)
     await toggle('user-questions', false)
     assert.deepEqual(whileMissing, [])
-    assert.equal(schemas(main).length, 31)
+    assert.equal(schemas(main).length, toolCatalog.business.length)
     assert.deepEqual(schemas(child), [])
   })
   await check('审批依赖重启不改写会话策略', async () => {
@@ -470,9 +519,13 @@ try {
     }
   })
   await check('写作能力停用与技能依赖中断期间即时撤销', async () => {
-    const presetsModule = await import(host === undefined ? '@deepseek-ai/dsh-agent-preset-registry' : pathToFileURL(host.entry('@deepseek-ai/dsh-agent-preset-registry')).href)
-    const mount = presetsModule.livePresetMounts(ctx.fiber).find(item => item.presetId === 'scriptor')
-    const writingEntry = [...mount.tree.entries()].find(item => item.options.id === 'scriptor-agent')
+    // Inspect the exact capability owner; newer presets expose detached inventory only.
+    const capability = service('agentPresets').serviceFor(main, 'webnovelWriting')
+    const implementation = Object.getOwnPropertySymbols(ctx.reflect.store)
+      .map(key => ctx.reflect.store[key]).find(item => item?.value === capability)
+    const writingEntry = implementation?.fiber.entry
+    assert.equal(writingEntry?.options.id, 'scriptor-agent')
+    const tree = writingEntry.parent.tree
     const assertInactive = async () => {
       assert.equal(service('agentPresets').serviceFor(main, 'webnovelWriting'), undefined)
       assert.deepEqual(schemas(main), [])
@@ -488,16 +541,16 @@ try {
     }
     try {
       await writingEntry.update({ disabled: true }, false, true)
-      await mount.tree.await()
+      await tree.await()
       await assertInactive()
     } finally {
       await writingEntry.update({ disabled: false }, false, true)
-      await mount.tree.await()
+      await tree.await()
     }
-    assert.equal(schemas(main).length, 31)
+    assert.equal(schemas(main).length, toolCatalog.business.length)
     try { await toggle('skills', true); await assertInactive() }
     finally { await toggle('skills', false) }
-    assert.equal(schemas(main).length, 31)
+    assert.equal(schemas(main).length, toolCatalog.business.length)
   })
   await check('空白切换与同名预设代际保持隔离', async () => {
     const blank = await createPresetAgent(service('agents'), { sessionId: 'preset-switch', meta: { cwd: workspace } }, 'standard')
@@ -508,7 +561,7 @@ try {
     try {
       assert.deepEqual(schemas(blank.agent), [])
       await presets.select(blank.agent, 'scriptor')
-      assert.equal(schemas(blank.agent).length, 31)
+      assert.equal(schemas(blank.agent).length, toolCatalog.business.length)
       await presets.select(blank.agent, 'standard')
       assert.deepEqual(schemas(blank.agent), [])
       assert.equal((await presentation(blank.agent)).status.length, 0)
@@ -518,8 +571,8 @@ try {
       newer = await createPresetAgent(service('agents'), { sessionId: 'preset-new-revision', meta: { cwd: workspace } })
       assert.notEqual(presets.serviceFor(newer.agent, 'webnovelWriting'), originalCapability)
       assert.equal(presets.serviceFor(main, 'webnovelWriting'), originalCapability)
-      assert.equal(schemas(main).length, 31)
-      assert.equal(schemas(newer.agent).length, 31)
+      assert.equal(schemas(main).length, toolCatalog.business.length)
+      assert.equal(schemas(newer.agent).length, toolCatalog.business.length)
       assert.deepEqual(schemas(blank.agent), [])
     } finally {
       await newer?.dispose()
@@ -527,7 +580,7 @@ try {
       await service('loader').await()
       await blank.dispose()
     }
-    assert.equal(schemas(main).length, 31)
+    assert.equal(schemas(main).length, toolCatalog.business.length)
   })
   await check('原生文件工具对子 Agent 的边界', async () => {
     const denied = await execute(child, 'write', { file_path: chapter, content: '不应覆盖定稿' })
@@ -547,7 +600,7 @@ try {
     const fresh = await createPresetAgent(service('agents'), { sessionId: 'loader-after-tools', meta: { cwd: workspace } })
     const delegated = await createPresetAgent(fresh.agent.ctx.get('agents'), { parentAgent: fresh.agent, sessionId: 'loader-after-tools-child', meta: { cwd: workspace, origin: 'subagent' } })
     try {
-      assert.equal(schemas(fresh.agent).length, 31)
+      assert.equal(schemas(fresh.agent).length, toolCatalog.business.length)
       assert.deepEqual(schemas(delegated.agent), [])
       assert.equal((await presentation(fresh.agent)).status.length, 1)
       assert.equal((await execute(fresh.agent, 'novel_select_book', { bookId: 'loader-book' })).value.ok, true)

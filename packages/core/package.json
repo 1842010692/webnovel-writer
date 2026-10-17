@@ -14,7 +14,7 @@
     "test": "vitest --root ../.. run packages/core/tests"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-user-questions": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-user-questions": "0.2.1-rc.2",
     "@types/yauzl": "2.10.3",
     "@webnovel/drafting": "workspace:*",
     "@webnovel/polish": "workspace:*",
@@ -22,8 +22,8 @@
     "typescript": "^5.5.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-user-questions": "0.2.0-rc.2"
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-user-questions": "0.2.1-rc.2"
   },
   "dependencies": {
     "saxes": "6.0.0",

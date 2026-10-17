@@ -48,6 +48,66 @@ function fixture() {
 }
 
 describe('持久补料与实际消费（15B）', () => {
+  it('宏观卷纲选料保存后共享消费，普通补充不消除缺口，移除/漂移仍报缺', () => {
+    const f = fixture()
+    const source = '大纲/卷规划/卷01/卷纲.md'
+    const original = '# 卷纲\n## 叙事结构\n起势涵盖数章：核对铜符来历，完成城门交接。【宏观规划原文】\n'
+    f.put(f.root, source, original)
+    const base = computeMaterials(f.root, key)
+    expect(base).toMatchObject({ ok: true, 状态: '段有缺', 卷纲参考: { 自动定位: '未命中', 已登记: [] } })
+    expect(base.文件?.find(file => file.relPath.includes('暂定与警告'))?.content).not.toContain('宏观规划原文')
+    expect(f.save().gaps.join(';')).toContain('卷纲参考未登记')
+    const selected: SupplementEdit = { 操作: '设置', 编号: 'volume', 标题: '起势段', 理由: '本章承接其中的城门交接', 性质: '原文',
+      用途: '本章卷纲参考', 来源: { 域: '本书', 路径: source, 起行: 2, 终行: 3 } }
+    const saved = f.save([selected])
+    expect(saved).toMatchObject({ ok: true, 状态: '段齐备', 卷纲参考: { 自动定位: '未命中', 已登记: [{ 编号: 'volume', 状态: '有效' }] } })
+    expect(saved.gaps).toEqual([])
+    expect(fs.readFileSync(path.join(f.root, source), 'utf8')).toBe(original)
+    expect(assembleMaterials(f.root, key).卷纲参考).toEqual(saved.卷纲参考)
+    const draft = loadDraftContext(f.root, key).材料段
+    const resume = rebuildResume(f.root, key).injection.材料段
+    const review = computeReview(f.root, key).材料段!
+    const section = Object.keys(draft).find(name => name.startsWith('补充/volume'))!
+    expect(draft[section]).toContain('宏观规划原文')
+    expect(draft[section]).toContain('用途：本章卷纲参考')
+    expect(resume[section]).toBe(draft[section])
+    expect(review[section]).toBe(draft[section])
+    const read = computeReview(f.root, key)
+    writeReviewRecord(f.root, key, read.record!)
+    f.put(f.root, source, original + '新规划未核对。\n')
+    expect(assembleMaterials(f.root, key)).toMatchObject({ ok: true, 状态: '已过期', 卷纲参考: { 已登记: [{ 编号: 'volume', 状态: '已过期' }] } })
+    expect(scanChapter(f.root, key).审核证据过期).toBe(true)
+    expect(computeReview(f.root, key).ok).toBe(false)
+    expect(f.save([selected]).ok).toBe(true)
+    const removed = f.save([{ 操作: '移除', 编号: 'volume' }])
+    expect(removed).toMatchObject({ ok: true, 状态: '段有缺', 卷纲参考: { 已登记: [] } })
+    expect(JSON.stringify(loadMaterialPackage(f.root, key).段)).not.toContain('宏观规划原文')
+  })
+
+  it('登记卷纲参考不掩盖其他契约分部缺口', () => {
+    const f = fixture()
+    f.put(f.root, '作品契约/契约.md', '# 契约\n## 创作禁区与不可妥协项\n保留人物动机。\n')
+    const saved = f.save([{ 操作: '设置', 编号: 'volume', 标题: '卷纲原文', 理由: '承接城门事件', 性质: '原文',
+      用途: '本章卷纲参考', 来源: { 域: '本书', 路径: '大纲/卷规划/卷01/卷纲.md' } }])
+    expect(saved).toMatchObject({ ok: true, 状态: '段有缺', 卷纲参考: { 已登记: [{ 编号: 'volume', 状态: '有效' }] } })
+    expect(saved.gaps.join(';')).toContain('契约文风')
+    expect(saved.gaps.join(';')).not.toContain('卷纲参考未登记')
+    expect(loadMaterialPackage(f.root, key).补充).toHaveLength(1)
+  })
+
+  it.each(['其他卷', '建议', '世界书'])('卷纲用途不能冒用%s，失败不覆盖原包', kind => {
+    const f = fixture()
+    f.save()
+    const before = fs.readFileSync(path.join(f.dir, '材料清单.json'), 'utf8')
+    const op: SupplementEdit = { 操作: '设置', 编号: 'wrong-volume', 标题: '错误引用', 理由: '核对用途', 性质: kind === '建议' ? '建议' : '原文',
+      用途: '本章卷纲参考', 来源: { 域: '本书', 路径: kind === '其他卷' ? '大纲/卷规划/卷02/卷纲.md' : kind === '世界书' ? '世界书/人物档案/关系补记.md' : '大纲/卷规划/卷01/卷纲.md' } }
+    const preview = f.preview([op])
+    expect(preview.ok).toBe(false)
+    expect(preview.gaps.join(';')).toContain('本章卷纲参考用途')
+    expect(preview.文件).toBeUndefined()
+    expect(fs.readFileSync(path.join(f.dir, '材料清单.json'), 'utf8')).toBe(before)
+  })
+
   it('公开预览入口不进入写锁或事务恢复', () => {
     const f = fixture()
     const lock = path.join(f.root, '.webnovel/book.lock')
@@ -108,7 +168,7 @@ describe('持久补料与实际消费（15B）', () => {
     const snapshot = fs.readFileSync(path.join(f.dir, '补充/relationship.md'), 'utf8')
     f.put(f.root, '世界书/人物档案/关系补记.md', '# 关系原文\n两人已经分道扬镳。【新关系不能静默替换】\n')
     const rebuilt = assembleMaterials(f.root, key)
-    expect(rebuilt).toMatchObject({ ok: false, 状态: '已过期' })
+    expect(rebuilt).toMatchObject({ ok: true, 状态: '已过期' })
     expect(fs.readFileSync(path.join(f.dir, '补充/relationship.md'), 'utf8')).toBe(snapshot)
     expect(JSON.stringify(rebuildResume(f.root, key).injection)).toContain('已过期')
     expect(JSON.stringify(loadDraftContext(f.root, key))).not.toContain('新关系不能静默替换')

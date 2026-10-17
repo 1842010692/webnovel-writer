@@ -5,6 +5,7 @@ import * as os from 'node:os'
 import {
   applyRevision,
   assembleMaterials,
+  computeMaterials,
   confirmOutline,
   deriveChapterFacts,
   preparePack,
@@ -76,7 +77,12 @@ describe('最小链 e2e', () => {
     ].join('\n')
     writeCandidate(root, { 卷: 1, 章: 1, 章名: '开篇任务', 来源引用: refs, body })
     expect(confirmOutline(root, key)).toEqual({ ok: true })
-    expect(assembleMaterials(root, key).ok).toBe(true)
+    const candidates = computeMaterials(root, key).卷纲参考!.候选
+    const preview = computeMaterials(root, { ...key, 仅预览: true, 补充操作: [{
+      操作: '设置', 编号: 'volume', 标题: '本章卷纲依据', 理由: '已核对开篇任务',
+      性质: '原文', 用途: '本章卷纲参考', 来源: candidates[0]!.来源,
+    }] })
+    expect(assembleMaterials(root, { ...key, 材料清单哈希: preview.已有清单哈希, 补充操作: preview.补充预览!.map(item => item.操作) }).ok).toBe(true)
     expect(deriveChapterFacts(scanChapter(root, key)).建议.环节).toBe('写稿')
 
     const drafted = writeDraft(root, {

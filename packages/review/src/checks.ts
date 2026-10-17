@@ -30,7 +30,7 @@ export function runTextNorm(input: CheckInput): Finding[] {
       : `作品契约章节篇幅配置错误：${configError ? policy.原因 : '无法解析'}`
     out.push(makeFinding({
       审核编号: input.审核编号, 模块名: 文本规范检查名,
-      发现项编号: findingId(input.审核编号, '文本', n++),
+      发现项编号: findingId(input.审核编号, 文本规范检查名, n++),
       严重程度: '低', 是否建议阻断: false,
       证据位置: configError ? policy.来源 : '正文汉字数（不含 frontmatter 和草稿候选事实）',
       所依据材料及版本: `${input.材料版本}；${policy.来源}${policy.来源哈希 ? `@${policy.来源哈希}` : ''}`,
@@ -43,7 +43,7 @@ export function runTextNorm(input: CheckInput): Finding[] {
     out.push(makeFinding({
       审核编号: input.审核编号,
       模块名: 文本规范检查名,
-      发现项编号: findingId(input.审核编号, '文本', n++),
+      发现项编号: findingId(input.审核编号, 文本规范检查名, n++),
       严重程度: '高',
       是否建议阻断: true,
       证据位置: '待审稿全文',
@@ -62,7 +62,7 @@ export function runTextNorm(input: CheckInput): Finding[] {
       out.push(makeFinding({
         审核编号: input.审核编号,
         模块名: 文本规范检查名,
-        发现项编号: findingId(input.审核编号, '文本', n++),
+        发现项编号: findingId(input.审核编号, 文本规范检查名, n++),
         严重程度: '中',
         是否建议阻断: false,
         证据位置: phrase,
@@ -81,7 +81,7 @@ export function runTextNorm(input: CheckInput): Finding[] {
     out.push(makeFinding({
       审核编号: input.审核编号,
       模块名: 文本规范检查名,
-      发现项编号: findingId(input.审核编号, '文本', n++),
+      发现项编号: findingId(input.审核编号, 文本规范检查名, n++),
       严重程度: '低',
       是否建议阻断: false,
       证据位置: '连续空格',
@@ -115,7 +115,7 @@ export function runCanonCheck(input: CheckInput): Finding[] {
       out.push(makeFinding({
         审核编号: input.审核编号,
         模块名: 设定与时序核对名,
-        发现项编号: findingId(input.审核编号, '设定', n++),
+        发现项编号: findingId(input.审核编号, 设定与时序核对名, n++),
         严重程度: '中',
         是否建议阻断: false,
         证据位置: '待语义审读（无确定性正文位置）',
@@ -135,7 +135,7 @@ export function runCanonCheck(input: CheckInput): Finding[] {
       out.push(makeFinding({
         审核编号: input.审核编号,
         模块名: 设定与时序核对名,
-        发现项编号: findingId(input.审核编号, '设定', n++),
+        发现项编号: findingId(input.审核编号, 设定与时序核对名, n++),
         严重程度: '高',
         是否建议阻断: true,
         证据位置: rule.term,
@@ -156,7 +156,7 @@ export function runCanonCheck(input: CheckInput): Finding[] {
       out.push(makeFinding({
         审核编号: input.审核编号,
         模块名: 设定与时序核对名,
-        发现项编号: findingId(input.审核编号, '设定', n++),
+        发现项编号: findingId(input.审核编号, 设定与时序核对名, n++),
         严重程度: '高',
         是否建议阻断: true,
         证据位置: 片段,

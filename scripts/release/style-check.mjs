@@ -250,7 +250,7 @@ export function formatReport(result) {
 
 // ---- 逐文件检查：docs、技能与代码提示词、工具输出 ----
 
-const CODE_PROMPT_FILES = ['packages/bundle/src/persona.ts', 'packages/bundle/src/status-context.ts', 'packages/bundle/src/study/editor-requests.ts']
+const CODE_PROMPT_FILES = ['packages/bundle/src/persona.ts', 'packages/bundle/src/worker-policy.ts', 'packages/bundle/src/writing-delegation.ts', 'packages/bundle/src/status-context.ts', 'packages/bundle/src/study/editor-requests.ts']
 /**
  * 工具输出字面量的语境：对象属性值、return、throw、toolFailure/parseFail 参数、
  * 字符串拼接与三元分支、push/notify/warn 调用参数。比较（=== '…'）和对象键不算。

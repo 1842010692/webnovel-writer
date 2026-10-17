@@ -122,15 +122,20 @@ export async function checkSearch({ root, workspace, main, child, ctx, service, 
       } finally { await other.dispose() }
     })
 
-    await check('独立嵌入提供方真实 HTTP 混合检索与配置刷新', async () => {
+    await check('独立嵌入提供方真实 HTTP 混合检索与配置刷新', async step => {
+      step('credential')
       await service('credentials').set(credentialRef('WEBNOVEL_SEARCH_TEST_KEY'), 'fixture-search-key')
+      step('enable-settings')
       await service('settings').update(ns, {
         enabled: true, protocol: 'openai-compatible', baseURL: `http://127.0.0.1:${server.address().port}/v1`,
         model: 'controlled-fixture', dimensions: 3, apiKeyEnv: 'WEBNOVEL_SEARCH_TEST_KEY',
         documentPrefix: 'document:', queryPrefix: 'query:', maxRetries: 0,
       })
+      step('enable-index')
       await manage('enable')
+      step('first-index')
       assert.equal((await ready()).generated, 2)
+      step('first-search')
       const result = await search()
       assert.equal(result.mode, 'hybrid', JSON.stringify(result))
       assert.deepEqual(result.hits.map(hit => hit.chapter), [1, 2])
@@ -143,7 +148,9 @@ export async function checkSearch({ root, workspace, main, child, ctx, service, 
       const cached = await search()
       assert.equal(cached.index.embedded, 0)
       assert.equal(cached.index.reused, 2)
+      step('refresh-settings')
       await service('settings').update(ns, { model: 'fixture-next', dimensions: 4 })
+      step('refresh-index')
       await manage('update')
       assert.equal((await ready()).generated, 2)
       const changed = await search()

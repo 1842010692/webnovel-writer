@@ -7,7 +7,8 @@ import type { AgentLike, NovelToolDefinition, ToolExecContext } from '../novel-t
 import type { ReferenceHost } from './host'
 import { assertObjectJsonSchema, assertSupportedJsonSchema, validateJsonSchemaValue, type JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 
-export const REFERENCE_TOOL_NAMES = ['novel_reference_source', 'novel_reference_analyze', 'novel_reference_query', 'novel_reference_report'] as const
+import { REFERENCE_TOOL_NAMES } from '../tool-catalog'
+export { REFERENCE_TOOL_NAMES } from '../tool-catalog'
 interface Deps { workspaceRoot(agent?: AgentLike): string | undefined; referenceHost?: Pick<ReferenceHost, 'readFile' | 'runner'> }
 const string = { type: 'string' } as const
 const source = { sourceId: string }

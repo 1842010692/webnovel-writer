@@ -314,6 +314,26 @@
     "strong": 0,
     "format": 0
   },
+  "packages/bundle/src/worker-policy.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/writing-delegation.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/worker-policy.ts#prompt": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/writing-delegation.ts#prompt": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
   "packages/bundle/src/status-context.ts#prompt": {
     "ratio": 1,
     "strong": 0,

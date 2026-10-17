@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ToolCallPhaseProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { editorSuggestionModel, novelResultModel, novelToolTitles } from '../src/client/tool-result'
 import { NOVEL_TOOL_NAMES } from '../src/novel-tools'
+import { NOVEL_CONDITIONAL_TOOL_NAMES } from '../src/tool-catalog'
 import {
   EDITOR_CANCELLED_REASON, EDITOR_DELIVERED_MESSAGE, EDITOR_DUPLICATE_REASON, EDITOR_UNANSWERED_REASON, EDITOR_UNKNOWN_REASON,
 } from '../src/study/editor-requests'
@@ -17,8 +18,9 @@ describe('小说结果卡的证据边界', () => {
     expect(novelResultModel(settled({ ok: true, scope: 'author', changed: false, commitState: 'not-required' })).facts)
       .toEqual(expect.arrayContaining([{ label: '记忆归属', value: '作者' }, { label: '文件', value: '无变化' }]))
   })
-  it('覆盖实际生产工具名，不为测试 seed 注册入口', () => {
+  it('业务结果卡覆盖业务工具；条件委派沿用原生结果展示', () => {
     expect(Object.keys(novelToolTitles).sort()).toEqual([...NOVEL_TOOL_NAMES].sort())
+    for (const name of NOVEL_CONDITIONAL_TOOL_NAMES) expect(novelToolTitles).not.toHaveProperty(name)
   })
   it('模块完成但问题未处置，不显示审核通过', () => {
     const model = novelResultModel(settled({ ok: true, 完成: true, 审核通过: false, 待处置数: 2, 待回写模块: [] }))
