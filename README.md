@@ -30,6 +30,12 @@
 
 ## 赞助与支持
 
+<a href="https://x6.ai" target="_blank"><img src="docs/assets/sponsors/x6-banner.jpg" alt="x6.ai · 一个 Key 调用所有模型 · 低至 1 折" width="728"/></a>
+
+[x6.ai](https://x6.ai)：一个 Key 调用所有主流模型，官 Key 直连(可蒸馏)和反代双通道，最低 1 折，注册送免费额度。支持支付宝、Google Pay、Apple Pay、Visa、Mastercard。
+
+[x6.ai](https://x6.ai): One API key for every major model. Official-key and proxy channels, up to 90% off, free credits on sign-up. Pay with Alipay, Google Pay, Apple Pay, Visa or Mastercard.
+
 <a href="https://www.aiyoyoo.com/register?aff=3BGQET3SVUJS" target="_blank"><img src="docs/assets/sponsors/crazytoken-banner.png" alt="CrazyToken · 全模型服务，直省 95%" width="728"/></a>
 
 #### Webnovel Writer × CrazyToken | 接入全球顶级大模型，为你的长篇连载创意保驾护航
