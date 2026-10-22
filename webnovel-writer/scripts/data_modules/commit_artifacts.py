@@ -49,3 +49,29 @@ def extraction_dict(commit_payload: dict[str, Any], field: str) -> dict[str, Any
 def extraction_text(commit_payload: dict[str, Any], field: str) -> str:
     value = extraction_result_from_commit(commit_payload).get(field)
     return str(value or "").strip()
+
+
+def entity_delta_metadata(delta: dict[str, Any]) -> dict[str, Any]:
+    """Read supplied metadata, preferring top-level fields over payload aliases.
+
+    Keep missing keys absent so partial updates preserve stored metadata.
+    Explicit empty values and false flags are updates, not fallback signals.
+    """
+    payload = delta.get("payload")
+    sources = (delta, payload) if isinstance(payload, dict) else (delta,)
+    aliases = {
+        "canonical_name": ("canonical_name", "name"),
+        "type": ("type", "entity_type"),
+        "tier": ("tier",),
+        "desc": ("desc", "description"),
+        "is_protagonist": ("is_protagonist",),
+        "is_archived": ("is_archived",),
+    }
+    result: dict[str, Any] = {}
+    for field, keys in aliases.items():
+        for source in sources:
+            key = next((key for key in keys if key in source), None)
+            if key is not None:
+                result[field] = source[key]
+                break
+    return result

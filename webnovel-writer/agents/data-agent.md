@@ -79,7 +79,8 @@ hook_strength: "strong"
 ### 7.1 字段命名
 
 - **state_deltas 子项**：`entity_id` + `field` + `old` + `new`。简单字段直接写（`realm`），嵌套用点号（`power.realm`、`location.current`），投影器自动展开。
-- **entity_deltas 子项**：`entity_id` + `action` + `entity_type`（值为 `角色|组织|地点|物品|势力`，非默认 `"角色"`）+ `payload`；`is_protagonist: true` 标主角（同步到 `state.protagonist_state`）。
+- **entity_deltas 子项**：`entity_id` + `action` + `entity_type`（值为 `角色|组织|地点|物品|势力`，非默认 `"角色"`）+ `payload`。实体元数据放在 `payload`：`name`、`desc`、`tier`（`核心|重要|次要|装饰`）、`is_protagonist`、`is_archived`。`is_protagonist: true` 标主角（同步到 `state.protagonist_state`），也兼容 `tier: "主角"`；显式 `is_protagonist: false` 优先于 tier 和名字推断。
+- **实体增量更新**：只写本章确认的字段；缺省元数据保留已有值，新实体才使用默认值。显式 `desc: ""` 清空描述，`is_archived: false` 取消归档。兼容元数据放在顶层、`canonical_name`/`name`、`desc`/`description`、`type`/`entity_type`；顶层字段优先于 `payload`，包括空值与 `false`。
 - **accepted_events 子项**：每条必含 `event_id`（章内稳定 ID 如 `evt-ch100-001`）+ `chapter`（当前章号）+ `event_type`（枚举见下）+ `subject`（主体 entity_id，非中文名）+ `payload`。
 - **event_type 枚举**：`character_state_changed`、`power_breakthrough`、`relationship_changed`、`world_rule_revealed`、`world_rule_broken`、`open_loop_created`、`open_loop_closed`、`promise_created`、`promise_paid_off`、`artifact_obtained`。
 - **各 event_type payload 必备字段**：
@@ -95,7 +96,7 @@ hook_strength: "strong"
 {
   "accepted_events": [{"event_id": "evt-ch100-001", "chapter": 100, "event_type": "open_loop_created", "subject": "three_year_promise", "payload": {"content": "三年之约提及"}}],
   "state_deltas": [{"entity_id": "xiaoyan", "field": "realm", "old": "斗者", "new": "斗师"}],
-  "entity_deltas": [{"entity_id": "hongyi_girl", "action": "upsert", "entity_type": "角色", "payload": {"name": "红衣女子"}}],
+  "entity_deltas": [{"entity_id": "hongyi_girl", "action": "upsert", "entity_type": "角色", "payload": {"name": "红衣女子", "desc": "身份未明的红衣女子", "tier": "重要", "is_protagonist": false, "is_archived": false}}],
   "entities_appeared": [{"id": "xiaoyan", "type": "角色", "mentions": ["萧炎"], "confidence": 0.95}],
   "scenes": [{"index": 1, "start_line": 1, "end_line": 30, "location": "萧炎房间", "summary": "药老提醒三年之约", "characters": ["xiaoyan", "yaolao"]}],
   "summary_text": "摘要"

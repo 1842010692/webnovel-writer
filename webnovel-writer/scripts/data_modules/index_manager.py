@@ -44,6 +44,7 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from .config import get_config
+from .commit_artifacts import entity_delta_metadata
 from .index_chapter_mixin import IndexChapterMixin
 from .index_entity_mixin import IndexEntityMixin
 from .index_debt_mixin import IndexDebtMixin
@@ -671,28 +672,22 @@ class IndexManager(IndexChapterMixin, IndexEntityMixin, IndexDebtMixin, IndexRea
             if new_value is not None and field not in current:
                 current[field] = new_value
 
-        payload = delta.get("payload") or {}
+        metadata = entity_delta_metadata(delta)
+        existing = self.get_entity(entity_id) or {}
         canonical_name = str(
-            delta.get("canonical_name")
-            or delta.get("name")
-            or payload.get("name")
-            or entity_id
-        ).strip()
-
-        tier = str(delta.get("tier") or "装饰").strip() or "装饰"
-        is_protagonist = bool(delta.get("is_protagonist"))
-        # tier='主角' 视同 is_protagonist=True（LLM 实际输出常用 tier 标注）
-        if not is_protagonist and tier == "主角":
+            metadata.get("canonical_name", existing.get("canonical_name")) or entity_id
+        ).strip() or entity_id
+        tier = str(metadata.get("tier", existing.get("tier")) or "装饰").strip() or "装饰"
+        # 显式布尔值优先；未提供时才从本次 tier 或已有标记推断。
+        if "is_protagonist" in metadata:
+            is_protagonist = bool(metadata["is_protagonist"])
+        elif metadata.get("tier") is not None and tier == "主角":
             is_protagonist = True
-        if "is_protagonist" not in delta and tier != "主角":
-            existing = self.get_entity(entity_id)
-            if existing:
-                is_protagonist = bool(existing.get("is_protagonist"))
+        else:
+            is_protagonist = bool(existing.get("is_protagonist"))
 
         entity_type = str(
-            delta.get("type")
-            or delta.get("entity_type")
-            or "角色"
+            metadata.get("type", existing.get("type")) or "角色"
         ).strip() or "角色"
 
         entity = EntityMeta(
@@ -700,12 +695,12 @@ class IndexManager(IndexChapterMixin, IndexEntityMixin, IndexDebtMixin, IndexRea
             type=entity_type,
             canonical_name=canonical_name,
             tier=tier,
-            desc=str(delta.get("desc") or delta.get("description") or "").strip(),
+            desc=str(metadata.get("desc", existing.get("desc")) or "").strip(),
             current=current,
             first_appearance=chapter,
             last_appearance=chapter,
             is_protagonist=is_protagonist,
-            is_archived=bool(delta.get("is_archived")),
+            is_archived=bool(metadata.get("is_archived", existing.get("is_archived"))),
         )
         self.upsert_entity(entity, update_metadata=True)
         return True

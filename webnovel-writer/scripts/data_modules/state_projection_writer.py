@@ -9,7 +9,7 @@ from typing import Any
 
 import filelock
 
-from .commit_artifacts import extraction_dict, extraction_list, extraction_text
+from .commit_artifacts import entity_delta_metadata, extraction_dict, extraction_list, extraction_text
 from .story_contracts import read_json_if_exists
 
 try:
@@ -217,8 +217,8 @@ class StateProjectionWriter:
         """聚合本次 commit + state.json 中已知的主角实体 ID。
 
         识别信号（任一命中即视为主角）：
-        - entity_deltas 子项 `is_protagonist: true`
-        - entity_deltas 子项 `tier == "主角"`
+        - entity_deltas 顶层或 payload 的 `is_protagonist: true`
+        - entity_deltas 顶层或 payload 的 `tier == "主角"`
         - entity_deltas 的 canonical_name 与 state.protagonist_state.name 相同
         - state.protagonist_state.entity_id 已经被显式设置过
         """
@@ -236,15 +236,17 @@ class StateProjectionWriter:
             eid = str(delta.get("entity_id") or delta.get("id") or "").strip()
             if not eid:
                 continue
-            tier = str(delta.get("tier") or "").strip()
-            canonical = str(
-                delta.get("canonical_name")
-                or (delta.get("payload") or {}).get("name")
-                or ""
-            ).strip()
+            metadata = entity_delta_metadata(delta)
+            if "is_protagonist" in metadata:
+                if metadata["is_protagonist"]:
+                    ids.add(eid)
+                else:
+                    ids.discard(eid)
+                continue
+            tier = str(metadata.get("tier") or "").strip()
+            canonical = str(metadata.get("canonical_name") or "").strip()
             if (
-                delta.get("is_protagonist")
-                or tier == "主角"
+                tier == "主角"
                 or (protagonist_name and canonical == protagonist_name)
             ):
                 ids.add(eid)
