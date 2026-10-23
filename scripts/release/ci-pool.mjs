@@ -13,11 +13,15 @@ export function diagnosticForks(directory) {
         name = 'diagnostic-forks'
         async start() {
           this.plannedStop = false
+          this.unexpectedDisconnect = false
           await super.start()
+          // A crashed fork can close IPC before emitting exit. Vitest may call
+          // stop() in response; that cleanup must not reclassify the crash.
+          this.on('disconnect', () => { if (!this.plannedStop) this.unexpectedDisconnect = true })
           this.on('exit', (code, signal) => {
             fs.mkdirSync(directory, { recursive: true })
             fs.appendFileSync(path.join(directory, 'workers.jsonl'), JSON.stringify({
-              worker: id, code, signal: signal ?? null, planned: this.plannedStop, at: Date.now(),
+              worker: id, code, signal: signal ?? null, planned: this.plannedStop && !this.unexpectedDisconnect, at: Date.now(),
             }) + '\n')
           })
         }
