@@ -45,9 +45,7 @@ export const name = 'webnovel-bundle'
 export { NOVEL_TOOL_NAMES, NOVEL_CONDITIONAL_TOOL_NAMES, NOVEL_PRODUCTION_TOOL_NAMES } from './tool-catalog'
 
 /**
- * 确定性检查脚本的 CLI 能力（R21/A1）：薄入口
- * `skills/novel-review/scripts/确定性检查.mjs` 经相对引 lib 取它，
- * 运行能力与插件运行时同属一份产物，不再内联 core 副本。
+ * 保留已有 Host 导出的兼容性；技能脚本从独立 lib/cli.js 加载相同实现。
  */
 export { runChecksCli } from './scripts/deterministic-checks'
 export { draftLengthCli } from './scripts/draft-length-cli'

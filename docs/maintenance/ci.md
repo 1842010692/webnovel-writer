@@ -29,6 +29,8 @@ Windows CI 和发行测试保存 `.tmp/ci/` 为带 Node 版本、分片及 attem
 - `results.json`：具体用例、失败与耗时。
 - `progress.json`：父进程记录已完成、正在运行和尚未启动的文件；worker 意外退出时仍可定位最后文件。
 - `workers.jsonl`：在固定版本的 Vitest fork 实现外记录真实退出码、信号及是否受控停止；不改变启动、终止、隔离或失败规则。进度同时记录最后活动用例，并把未处理错误标为失败，不能只看 Vitest JSON 中的 `success` 字段。
+
+进程意外结束时，IPC 的 `disconnect` 可能先于 `exit` 到达，Vitest 随后会调用 `stop()` 清理。诊断器在停止请求前发现 IPC 断开时保留异常标记，避免把后续清理误记为计划停止；正常停止仍记为计划停止。真实进程夹具同时验证异常终止非零失败和普通退出，两种情况都不能省略。
 - `loader.json`：真实宿主夹具的阶段及检查结果。
 - Node fatal report：仅在 Node 能捕获的致命错误时生成，启用 `--report-exclude-env`，不记录环境变量。没有报告不能证明没有原生崩溃。
 

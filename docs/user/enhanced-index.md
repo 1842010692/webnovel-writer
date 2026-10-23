@@ -24,7 +24,7 @@
 
 ## 0. 前提
 
-1. 安装完整版 `@linfengqaqtat/dsh-scriptor-full@8.3.0`，或单独安装 `@linfengqaqtat/dsh-scriptor-retrieval@8.3.0`。见 [最小可用配置](configuration.md)。
+1. 安装完整版 `@linfengqaqtat/dsh-scriptor-full@8.3.1`，或单独安装 `@linfengqaqtat/dsh-scriptor-retrieval@8.3.1`。见 [最小可用配置](configuration.md)。
 2. 准备一个真实可用的嵌入服务。协议可以是 OpenAI 兼容，或 Gemini 原生。先确认它的模型标识和向量维度。
 3. 先读 [隐私与费用](privacy.md)，确认可以接受发送范围。
    嵌入服务会产生费用。

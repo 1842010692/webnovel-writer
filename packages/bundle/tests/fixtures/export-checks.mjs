@@ -25,8 +25,7 @@ export async function checkMinimalExport({ root, workspace, check, report }) {
       return out
     }
     const before = snapshot()
-    // Thin entry resolves ../../../lib/index.js from the packaged skills tree.
-    fs.copyFileSync(path.join(root, 'lib/webnovel.mjs'), path.join(root, 'lib/index.js'))
+    // Exercise the standalone CLI built beside the Host fixture.
     const script = path.join(root, 'skills/novel-export/scripts/最小导出.mjs')
     const run = (args, options = {}) => execFileSync(process.execPath, [script, '--book', book, ...args], { cwd: workspace, encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 5 * 1024 * 1024, ...options })
 

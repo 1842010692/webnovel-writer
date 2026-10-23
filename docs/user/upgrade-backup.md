@@ -1,8 +1,8 @@
 # 备份、升级与卸载
 
-## 升级到 8.3.0
+## 升级到 8.3.1
 
-本版适配 DSH 0.2.1-rc.2，改进角色委派、材料选取与润色保真。无修改时复用源稿，不生成重复版本。
+本版修复技能脚本无法启动和侧栏缩窄后内容被裁切的问题，继续使用 DSH 0.2.1-rc.2。已经使用 8.3.0 的用户更新原有组件并重启即可，无需重装 DSH、手动补装框架包或迁移作品。
 
 **先升级 DSH 至 0.2.1-rc.2，再更新插件。** 仍使用 DSH 0.2.0-rc.2 时，请继续固定 Scriptor 8.2.2。
 
@@ -51,7 +51,7 @@
 
 ## 检索和桌宠要一起更新吗
 
-本次四包采用统一发行号 8.3.0。推荐使用经过同批验证的版本组合。检索增强和桌宠这次没有新增功能，属于兼容版本同步。
+本次四包采用统一发行号 8.3.1。推荐使用经过同批验证的版本组合。检索增强和桌宠这次没有新增功能，属于兼容版本同步。
 
 桌宠在 npm 上的处理，不再阻塞主包、检索和完整版发布。如果暂时查不到新版桌宠，可以稍后再更新，或使用 Release 里已校验的独立桌宠安装包。不必为了等待桌宠而暂停写作组件的升级。
 
@@ -62,7 +62,7 @@
 
 ## 旧包名迁移（8.0.0 起）
 
-8.0.0 起，旧的 webnovel-embedding-provider 更名为 @linfengqaqtat/dsh-scriptor-retrieval。旧的 @linfengqaqtat/dsh-whale-companion 更名为 @linfengqaqtat/dsh-scriptor-companion。本次安装包都是 8.3.0，使用 DSH 0.2.1-rc.2。
+8.0.0 起，旧的 webnovel-embedding-provider 更名为 @linfengqaqtat/dsh-scriptor-retrieval。旧的 @linfengqaqtat/dsh-whale-companion 更名为 @linfengqaqtat/dsh-scriptor-companion。本次安装包都是 8.3.1，使用 DSH 0.2.1-rc.2。
 
 > [!WARNING]
 > 不要同时启用旧包和新包。
@@ -96,13 +96,13 @@
    成功时，书房可以打开，并且书仓状态与备份前的预期一致。
 
 ```powershell
-dsh plugin --profile scriptor add @linfengqaqtat/dsh-scriptor@8.3.0
+dsh plugin --profile scriptor add @linfengqaqtat/dsh-scriptor@8.3.1
 dsh --profile scriptor --dump-config
 ```
 
 上面展示的是命令写法。更新时换成实际的目标版本。
 
-完整版安装使用 `@linfengqaqtat/dsh-scriptor-full@8.3.0`。不要在保留完整版时另外安装主包。从单装转到 full，按 [切换步骤](install.md#从单装切换为完整版) 操作。切回单装时，先停机并移除 full，再安装所需的单包。
+完整版安装使用 `@linfengqaqtat/dsh-scriptor-full@8.3.1`。不要在保留完整版时另外安装主包。从单装转到 full，按 [切换步骤](install.md#从单装切换为完整版) 操作。切回单装时，先停机并移除 full，再安装所需的单包。
 
 ## 回退
 
