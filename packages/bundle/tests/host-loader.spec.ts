@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { removeSync } from '../../core/src/repo/remove'
 import { loadSourceHost } from '../scripts/dsh-source.mjs'
 import { linkFixtureDependencies } from './fixtures/fixture-dependencies.mjs'
+import { buildCli } from '../scripts/build-cli.mjs'
 
 const run = promisify(execFile)
 const packageRoot = path.resolve(__dirname, '..')
@@ -83,6 +84,8 @@ beforeAll(async () => {
   linkHostDependencies(root)
   const outfile = path.join(root, 'lib', 'webnovel.mjs')
   fs.cpSync(path.join(packageRoot, 'skills'), path.join(root, 'skills'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}')
+  await buildCli(path.join(root, 'lib/cli.js'))
   await build({
     entryPoints: {
       'lib/webnovel': path.join(packageRoot, 'src', 'index.ts'),

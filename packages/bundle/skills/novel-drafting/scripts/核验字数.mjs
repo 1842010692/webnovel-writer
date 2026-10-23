@@ -1,9 +1,22 @@
-// Thin entry: use the plugin's shared counter, with no embedded runtime copy.
-const libUrl = new URL('../../../lib/index.js', import.meta.url)
+/**
+ * 核验字数：从同包独立 CLI 运行库调用现有只读计算。
+ * 退出码：沿用业务返回值；2 执行异常；3 运行库无法加载或导出不符。
+ */
+const libUrl = new URL('../../../lib/cli.js', import.meta.url)
+let run
 try {
-  const { draftLengthCli } = await import(libUrl)
-  process.exitCode = draftLengthCli(process.argv.slice(2))
+  const lib = await import(libUrl)
+  run = lib.draftLengthCli
+  if (typeof run !== 'function') throw new Error('运行库缺少 draftLengthCli，请核对插件文件版本')
 } catch (err) {
-  console.error(`无法加载插件运行库 lib/index.js（${libUrl.href}）：${err instanceof Error ? err.message : String(err)}`)
+  console.error(`无法加载技能运行库 lib/cli.js（${libUrl.href}）：${err instanceof Error ? err.message : String(err)}`)
   process.exitCode = 3
+}
+if (typeof run === 'function') {
+  try {
+    process.exitCode = await run(process.argv.slice(2))
+  } catch (err) {
+    console.error(`核验字数执行异常：${err instanceof Error ? err.message : String(err)}`)
+    process.exitCode = 2
+  }
 }

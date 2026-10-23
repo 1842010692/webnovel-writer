@@ -18,10 +18,10 @@ assert.equal(writing[0].insert[0].config.name, '写作模式')
 assert.equal(writing[0].insert[0].config.order, 5)
 assert.equal(writing[0].insert[0].config.selectedDefault, undefined)
 assert.equal(fs.readFileSync(path.join(root, 'presets/writing.patch.yml')).equals(fs.readFileSync(path.join(root, '../meta/presets/writing.patch.yml'))), true)
-const lib = fs.readFileSync(path.join(root, 'lib/index.js'), 'utf8')
+const lib = fs.readFileSync(path.join(root, 'lib/cli.js'), 'utf8')
 for (const [relative, name] of thinScripts) {
   const text = fs.readFileSync(path.join(root, relative), 'utf8')
-  assert.ok(text.includes('lib/index.js'), relative)
+  assert.ok(text.includes('lib/cli.js'), relative)
   assert.ok(!/from\s*["']@webnovel\//.test(text), relative)
   assert.ok(lib.includes(name), `${name} missing from built library`)
 }

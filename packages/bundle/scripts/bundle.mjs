@@ -1,9 +1,8 @@
 /**
  * 打成单文件 ESM 产物,供 dsh 以原生 ESM 直接加载。
  *
- * 只构建插件入口 lib/index.js 一份产物；技能脚本（skills 下各 scripts 目录的 .mjs）
- * 是手写薄入口（R21／裁决 A1,2026-09-05）——运行能力经相对引 lib/index.js,构建尾部
- * 只做接缝校验,不再内联任何 core 副本进 skills/。
+ * Host 与独立 CLI 分别构建；技能薄入口相对引 lib/cli.js，复用同一业务源码，
+ * 不要求普通 Node 进程能解析 DSH 宿主运行时。
  *
  * 为什么必须打包(2026-09-01 真机冒烟实证):
  * dsh 用原生 ESM `import()` 吃插件入口,而 Node 的 ESM 解析器不补全扩展名;
@@ -21,6 +20,7 @@ import * as esbuild from 'esbuild'
 import { writeNotices } from '../../../scripts/release/notices.mjs'
 import { thinScripts as THIN_SCRIPTS } from './artifact-contract.mjs'
 import { baseline } from './dsh-source.mjs'
+import { buildCli } from './build-cli.mjs'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'))
@@ -77,6 +77,8 @@ async function buildEntry(entry, outfile) {
 
 const hostBuild = await buildEntry(path.join(packageRoot, 'src', 'index.ts'), path.join(packageRoot, 'lib', 'index.js'))
 const presetBuild = await buildEntry(path.join(packageRoot, 'src', 'preset.ts'), path.join(packageRoot, 'lib', 'preset.js'))
+const cliBuild = await buildCli(path.join(packageRoot, 'lib', 'cli.js'))
+console.log('[bundle] lib/cli.js ok (Node builtins only)')
 const writingPreset = fs.readFileSync(path.join(packageRoot, 'presets/writing.patch.yml'))
 if (!writingPreset.equals(fs.readFileSync(path.join(packageRoot, '../meta/presets/writing.patch.yml')))) {
   throw new Error('主包与完整版的写作模式定义不一致')
@@ -95,23 +97,19 @@ checkDependencies(clientBuild)
 console.log('[bundle] lib/client.js ok (DSH native client module)')
 
 /**
- * 技能脚本薄入口接缝校验（R21／裁决 A1）。
- *
- * 脚本产物形态已定：skills 下各 scripts 目录的 .mjs 是**手写薄入口**（进 git），运行能力
- * 经相对引插件根 `lib/index.js`，不再由本构建内联 core 副本。这里逐个校验薄入口与 lib
- * 的接缝（入口存在／引 lib／lib 导出对应能力），防止「删了 re-export、脚本只在运行时才炸」。
+ * 薄入口接缝仅做早期诊断；实包独立进程执行由 pack-check 验证。
  */
-const libText = fs.readFileSync(path.join(packageRoot, 'lib', 'index.js'), 'utf8')
+const libText = fs.readFileSync(path.join(packageRoot, 'lib', 'cli.js'), 'utf8')
 for (const [rel, fn] of THIN_SCRIPTS) {
   const abs = path.join(packageRoot, ...rel.split('/'))
   if (!fs.existsSync(abs)) throw new Error(`脚本薄入口缺失:${rel}`)
   const text = fs.readFileSync(abs, 'utf8')
-  if (!text.includes('lib/index.js')) throw new Error(`脚本薄入口未引 lib/index.js(违背裁决 A1):${rel}`)
-  if (!libText.includes(fn)) throw new Error(`lib/index.js 未导出 ${fn},薄入口将无法加载:${rel}`)
+  if (!text.includes('lib/cli.js')) throw new Error(`脚本薄入口未引 lib/cli.js:${rel}`)
+  if (!libText.includes(fn)) throw new Error(`lib/cli.js 未导出 ${fn},薄入口将无法加载:${rel}`)
 }
-console.log(`[bundle] 脚本薄入口接缝校验 ok (${THIN_SCRIPTS.length} 个薄入口 -> lib/index.js)`)
+console.log(`[bundle] 脚本薄入口接缝校验 ok (${THIN_SCRIPTS.length} 个薄入口 -> lib/cli.js)`)
 
-writeNotices(packageRoot, [hostBuild, presetBuild, clientBuild])
+writeNotices(packageRoot, [hostBuild, presetBuild, clientBuild, cliBuild])
 fs.appendFileSync(path.join(packageRoot, 'THIRD_PARTY_NOTICES.md'), `\n## DSH writing preset basis\n\nThe writing preset is adapted from the DSH ${baseline.source.version} standard preset (MIT).\nCopyright (c) 2026 DeepSeek. [Original notice](licenses/dsh-preset.txt).\nSource: https://github.com/deepseek-ai/deepseek-harness/tree/${baseline.source.commit}/packages/bundle/web-app/presets\n`)
 // Vendored diagram artwork is source input rather than an npm dependency.
 fs.appendFileSync(path.join(packageRoot, 'THIRD_PARTY_NOTICES.md'), '\n## Archify artwork\n\nWriting workflow geometry and semantic styling derive from Archify 3.0.1 (MIT).\nCopyright (c) 2026 tt-a1i (Archify); Copyright (c) 2025 Cocoon AI.\n[Original notice](licenses/archify.txt). Source: https://github.com/tt-a1i/archify\n')

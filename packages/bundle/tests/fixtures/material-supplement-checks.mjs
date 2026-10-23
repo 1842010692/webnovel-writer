@@ -35,7 +35,6 @@ export async function checkMaterialSupplements({ root, workspace, main, execute,
     for (const material of [core.loadDraftContext(book, key).材料段, core.rebuildResume(book, key).injection.材料段, core.computeReview(book, key).材料段]) assert.match(JSON.stringify(material), /宿主补料标记/)
 
     // Exercise the packaged thin entry and its opt-in JSON output for the review handoff.
-    fs.copyFileSync(path.join(root, 'lib/webnovel.mjs'), path.join(root, 'lib/index.js'))
     const cli = execFileSync(process.execPath, [path.join(root, 'skills/novel-review/scripts/确定性检查.mjs'), '--book', book, '--卷', '1', '--章', '3', '--章名', '章3', '--审读材料', 'true'], { cwd: workspace, encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 2 * 1024 * 1024 })
     const review = JSON.parse(cli)
     assert.equal(review.ok, true)

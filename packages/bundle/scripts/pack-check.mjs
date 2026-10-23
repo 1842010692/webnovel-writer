@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { isBuiltin } from 'node:module'
@@ -11,9 +11,11 @@ import { build } from 'esbuild'
 import { parse } from 'yaml'
 import { skills as skillNames, referenceDocs, thinScripts } from './artifact-contract.mjs'
 import { packageFiles, checkPublishableManifest } from '../../../scripts/release/tar.mjs'
+import { checkCliDependencies } from './build-cli.mjs'
+import { checkStandaloneScripts } from './check-standalone-cli.mjs'
 
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'scriptor-pack-'))
+const temp = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'scriptor-pack-'))
 const run = (exe, args, cwd = temp) => execFileSync(exe, args, { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
 let tarball = process.argv[2] && path.resolve(process.argv[2])
 if (!tarball) {
@@ -60,10 +62,10 @@ for (const skill of skillNames) {
 const expectedPrompts = [...skillNames.map(skill => `skills/${skill}/SKILL.md`), ...referenceDocs].sort()
 assert.deepEqual([...packedFiles.keys()].filter(file => file.startsWith('skills/') && file.endsWith('.md')).sort(), expectedPrompts)
 for (const reference of referenceDocs) assert.ok(read(reference).trim(), `Empty dispatch reference: ${reference}`)
-for (const script of scripts) assert.match(read(script), /new URL\(['"]\.\.\/\.\.\/\.\.\/lib\/index\.js['"], import\.meta\.url\)/)
+for (const script of scripts) assert.match(read(script), /new URL\(['"]\.\.\/\.\.\/\.\.\/lib\/cli\.js['"], import\.meta\.url\)/)
 for (const entry of entries) {
   const rel = entry.slice('package/'.length)
-  assert.ok(/^(package\.json|README\.md|THIRD_PARTY_NOTICES\.md|licenses\/[^/]+\.txt|LICENSE|cordis\.patch\.yml|presets\/writing\.patch\.yml|lib\/(index|client|preset)\.js|skills\/[\w-]+\/.+\.(md|mjs))$/.test(rel), `Unexpected release file: ${rel}`)
+  assert.ok(/^(package\.json|README\.md|THIRD_PARTY_NOTICES\.md|licenses\/[^/]+\.txt|LICENSE|cordis\.patch\.yml|presets\/writing\.patch\.yml|lib\/(index|client|preset|cli)\.js|skills\/[\w-]+\/.+\.(md|mjs))$/.test(rel), `Unexpected release file: ${rel}`)
   const text = read(rel)
   assert.ok(!text.includes(path.resolve(packageRoot, '../..')), `Workspace path embedded in ${rel}`)
   assert.ok(!/-----BEGIN .*PRIVATE KEY-----|sk-[A-Za-z0-9]{24,}/.test(text), `Credential in ${rel}`)
@@ -78,6 +80,18 @@ const compiled = await build({ entryPoints: [path.join(extracted, 'lib/index.js'
 const imports = [...new Set(Object.values(compiled.metafile.outputs).flatMap(output => output.imports).map(item => item.path))].sort()
 for (const name of imports) assert.ok(isBuiltin(name) || manifest.peerDependencies?.[name] || manifest.dependencies?.[name], `Undeclared packed import: ${name}`)
 assert.equal(Object.keys(compiled.metafile.inputs).length, 1, 'Packed Host must be self-contained apart from declared peers')
-const report = { package: manifest.name, version: manifest.version, tarball, sha256: createHash('sha256').update(fs.readFileSync(tarball)).digest('hex'), files: entries.length, skills: skillNames.length, scripts: scripts.length, imports, ok: true }
+const cli = await build({ entryPoints: [path.join(extracted, 'lib/cli.js')], bundle: true, packages: 'external', write: false, metafile: true, platform: 'node', format: 'esm', logLevel: 'silent' })
+checkCliDependencies(cli)
+assert.equal(Object.keys(cli.metafile.inputs).length, 1, 'Packed CLI must be self-contained apart from Node builtins')
+// Source helpers prepare synthetic files only. The tested processes cannot read them.
+const fixture = path.join(temp, 'standalone-book.mjs')
+await build({ entryPoints: [path.join(packageRoot, 'tests/fixtures/standalone-book.ts')], outfile: fixture, bundle: true, platform: 'node', format: 'esm', target: 'node22.19', logLevel: 'silent',
+  banner: { js: "import { createRequire as __createRequire } from 'node:module'\nconst require = __createRequire(import.meta.url)" },
+})
+const { createStandaloneBook } = await import(pathToFileURL(fixture).href)
+const book = path.join(temp, '书仓 测试')
+createStandaloneBook(book)
+const standalone = checkStandaloneScripts(extracted, book, path.join(temp, 'cli-report.json'), path.join(packageRoot, 'src/index.ts'))
+const report = { package: manifest.name, version: manifest.version, tarball, sha256: createHash('sha256').update(fs.readFileSync(tarball)).digest('hex'), files: entries.length, skills: skillNames.length, scripts: scripts.length, imports, standalone, ok: true }
 fs.writeFileSync(path.join(temp, 'report.json'), JSON.stringify(report, null, 2) + '\n')
 console.log(JSON.stringify({ ...report, report: path.join(temp, 'report.json') }, null, 2))

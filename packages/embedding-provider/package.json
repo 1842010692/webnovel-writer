@@ -1,6 +1,6 @@
 {
   "name": "@linfengqaqtat/dsh-scriptor-retrieval",
-  "version": "8.3.0",
+  "version": "8.3.1",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
