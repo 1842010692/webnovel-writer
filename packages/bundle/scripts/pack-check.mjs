@@ -54,6 +54,8 @@ for (const [name, version] of Object.entries({ ...manifest.dependencies, ...mani
   assert.ok(!/^(workspace:|file:|link:)/.test(version), `Local runtime dependency: ${name}`)
 }
 const scripts = thinScripts.map(([file]) => file)
+assert.deepEqual([...packedFiles.keys()].filter(file => file.startsWith('skills/') && file.endsWith('.mjs')).sort(), [...scripts].sort(),
+  'Every packaged skill script must have a standalone acceptance scenario')
 assert.deepEqual(fs.readdirSync(path.join(extracted, 'skills')).sort(), [...skillNames].sort())
 for (const skill of skillNames) {
   const text = read(`skills/${skill}/SKILL.md`)
