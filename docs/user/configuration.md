@@ -75,7 +75,7 @@ DSH 负责模型连接和凭据。本插件负责小说工作流。先把一个�
 使用主包安装方式时，可以单独添加嵌入提供方。完整版已经包含此包。
 
 ```powershell
-dsh plugin --profile scriptor add @linfengqaqtat/dsh-scriptor-retrieval@8.3.1
+dsh plugin --profile scriptor add @linfengqaqtat/dsh-scriptor-retrieval@8.3.2
 ```
 
 首次安装默认停用。
