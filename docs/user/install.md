@@ -1,6 +1,6 @@
-# 安装 Scriptor 8.3.1
+# 安装 Scriptor 8.3.2
 
-本版配套 **DSH 0.2.1-rc.2**。先安装这个桌面端，再在 DSH 里安装插件。
+本版配套 **DSH 0.2.1-rc.3**。先安装这个桌面端，再在 DSH 里安装插件。
 
 > [!NOTE]
 > 桌面端自带运行时。
@@ -8,7 +8,7 @@
 
 ## 1. 打开插件管理
 
-1. 从 [DSH 官网](https://www.deepseek.com/harness/) 安装 **DSH 0.2.1-rc.2**。
+1. 从 [DSH 官网](https://www.deepseek.com/harness/) 安装 **DSH 0.2.1-rc.3**。
    成功时，桌面端可以打开。
 2. 在侧栏选择 **插件**。
 3. 点击 **添加插件**。
@@ -31,14 +31,14 @@
 1. 在添加插件的输入框粘贴下表中的完整标识。
 2. 核对预览里的包名、版本和来源。
 3. 确认安装。
-   成功时，预览中的版本是 8.3.1。
+   成功时，预览中的版本是 8.3.2。
 
 | 插件 | 输入框内容 | 用途 |
 | --- | --- | --- |
-| 写作工作台 | `@linfengqaqtat/dsh-scriptor@8.3.1` | 书房、设计、写章、审读、定稿与导出 |
-| 检索增强（可选） | `@linfengqaqtat/dsh-scriptor-retrieval@8.3.1` | 嵌入、场景识别、重排，分别配置和启用 |
-| 鲸鱼娘（可选） | `@linfengqaqtat/dsh-scriptor-companion@8.3.1` | 窗口内陪伴及会话状态反馈 |
-| 完整版（二选一） | `@linfengqaqtat/dsh-scriptor-full@8.3.1` | 一次安装写作与检索，不含桌宠 |
+| 写作工作台 | `@linfengqaqtat/dsh-scriptor@8.3.2` | 书房、设计、写章、审读、定稿与导出 |
+| 检索增强（可选） | `@linfengqaqtat/dsh-scriptor-retrieval@8.3.2` | 嵌入、场景识别、重排，分别配置和启用 |
+| 鲸鱼娘（可选） | `@linfengqaqtat/dsh-scriptor-companion@8.3.2` | 窗口内陪伴及会话状态反馈 |
+| 完整版（二选一） | `@linfengqaqtat/dsh-scriptor-full@8.3.2` | 一次安装写作与检索，不含桌宠 |
 
 后续正式版本发布到 npm 的 latest。本教程使用精确版本，方便核对配套的 DSH。安装源优先选官方 npm。
 
@@ -52,7 +52,7 @@
 2. 应用变更。如果页面要求重启，按上面的方式完全退出后再打开。
    成功时，已安装列表符合下面的结果。
 
-- **写作工作台**：包名正确，版本为 8.3.1。启用后可以打开书房。
+- **写作工作台**：包名正确，版本为 8.3.2。启用后可以打开书房。
 - **检索增强**：可以找到嵌入、场景识别和重排配置。它们默认关闭。基础写作不必先填写这些项目。
 - **鲸鱼娘**：界面出现角色。隐藏之后，可以从对应设置里恢复。
 
@@ -72,7 +72,15 @@
 
 ## 为什么要固定 DSH 版本
 
-插件只针对一个 DSH 版本验证。8.3.1 配套 **DSH 0.2.1-rc.2**。旧版 preview.6 / 提供方 0.0.8 对应 0.1.5-rc.2。
+插件只针对一个 DSH 版本验证。8.3.2 配套 **DSH 0.2.1-rc.3**。
+
+| DSH 版本 | 配套 Scriptor |
+| --- | --- |
+| 0.2.1-rc.3 | 8.3.2 |
+| 0.2.1-rc.2 | 8.3.1 |
+| 0.2.0-rc.2 | 8.2.2 |
+
+旧版 preview.6 / 提供方 0.0.8 对应 0.1.5-rc.2。
 
 DSH 接口会随版本变化。更高的 DSH 版本不代表已经兼容。
 
@@ -89,7 +97,7 @@ DSH 接口会随版本变化。更高的 DSH 版本不代表已经兼容。
 
 1. 停用正在使用的会话。
 2. 移除单独安装的写作工作台和检索增强。
-3. 安装 `@linfengqaqtat/dsh-scriptor-full@8.3.1`。
+3. 安装 `@linfengqaqtat/dsh-scriptor-full@8.3.2`。
 4. 应用变更。
    成功时，只剩下完整版这一个入口。
 
@@ -114,9 +122,9 @@ DSH 接口会随版本变化。更高的 DSH 版本不代表已经兼容。
 8. 确认主包和检索各只有一个有效入口，然后再继续写作。
    书稿不会因为改了包名就自动搬迁。
 
-0.1.0-preview.7 / 旧提供方 0.0.9 对应 DSH 0.1.7-rc.2。8.3.1 对应 DSH 0.2.1-rc.2。旧版资料留在相应的 Release。不要把一个版本的说明套到另一个 DSH 上。
+0.1.0-preview.7 / 旧提供方 0.0.9 对应 DSH 0.1.7-rc.2。8.3.2 对应 DSH 0.2.1-rc.3。旧版资料留在相应的 Release。不要把一个版本的说明套到另一个 DSH 上。
 
-[下载本版及校验和](https://github.com/lingfengQAQ/webnovel-writer/releases/tag/scriptor-v8.3.1) · [配置教程](configuration.md) · [故障排查](troubleshooting.md) · [维护者命令行安装](../maintenance/cli-install.md)
+[下载本版及校验和](https://github.com/lingfengQAQ/webnovel-writer/releases/tag/scriptor-v8.3.2) · [配置教程](configuration.md) · [故障排查](troubleshooting.md) · [维护者命令行安装](../maintenance/cli-install.md)
 
 ## 平台与测试范围
 
