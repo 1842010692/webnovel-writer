@@ -7,6 +7,8 @@ overrides:
   'source-map-js@<1.2.2': '1.2.2'
   # GHSA-587h-7wmj-h5pm: patch the existing Vite 8.3 test-toolchain resolution.
   'vite@>=8.3.0 <8.3.3': '8.3.3'
+  # GHSA-mrhx-c7xc-m3w5: patch Zod 4 in the development SDK dependency graph.
+  'zod@>=4.0.0 <4.6.6': '4.6.6'
 # pnpm 10+ 默认阻断依赖构建脚本；仅放行构建/测试确实需要的原生组件
 allowBuilds:
   esbuild: true
