@@ -259,7 +259,7 @@ try {
   await check('随包技能发现、资源、覆盖优先级与卸载重载', async () => {
     const skills = () => service('skills').list({ cwd: workspace, scope: main })
     const names = (await skills()).map(skill => skill.name).sort()
-    assert.equal(names.length, 11)
+    assert.equal(names.length, 12)
     for (const name of names) {
       const skill = await service('skills').get(name, { cwd: workspace, scope: main })
       assert.equal(skill.provider, 'webnovel-bundled')

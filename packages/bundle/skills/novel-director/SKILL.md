@@ -25,6 +25,7 @@ user-invocable: false
 | 定稿沉淀 | `novel-settle` |
 | 最小导出 | `novel-export` |
 | 参考小说拆解 | `novel-analyze` |
+| 五书网文教科书 | `novel-craft` |
 
 ## 标准流程
 

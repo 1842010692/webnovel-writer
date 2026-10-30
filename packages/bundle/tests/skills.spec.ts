@@ -4,7 +4,7 @@ import * as path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
 /**
- * 主控+节点+聚合技能（全生命周期 11 份）。
+ * 主控+节点+聚合技能（全生命周期 12 份）。
  * 目录名即 frontmatter name（Agent Skills 规范硬要求：name 必须与父目录名一致）。
  */
 const EXPECTED_SKILLS: ReadonlyArray<{ readonly name: string; readonly 中文名: string }> = [
@@ -19,6 +19,7 @@ const EXPECTED_SKILLS: ReadonlyArray<{ readonly name: string; readonly 中文名
   { name: 'novel-settle', 中文名: '定稿沉淀' },
   { name: 'novel-export', 中文名: '最小导出' },
   { name: 'novel-analyze', 中文名: '参考小说拆解' },
+  { name: 'novel-craft', 中文名: '五书网文教科书' },
 ]
 
 const BLACKLIST = ['家位', '门控', '闭环', '抓手', '世代']
@@ -50,7 +51,7 @@ function readFrontmatter(text: string): Record<string, unknown> {
 }
 
 describe('聚合 skills 体系（渐进式披露与 Subagent 协同）', () => {
-  it('交付 11 份 SKILL.md，文件名一一对应', () => {
+  it('交付 12 份 SKILL.md，文件名一一对应', () => {
     for (const s of EXPECTED_SKILLS) {
       expect(fs.existsSync(skillPath(s.name)), `${s.name}/SKILL.md 应存在`).toBe(true)
     }

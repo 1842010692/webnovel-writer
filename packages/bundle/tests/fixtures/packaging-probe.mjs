@@ -24,7 +24,7 @@ export async function apply(ctx, config) {
     assert.equal(tools.length, config.installed ? 30 : 0)
     assert.ok(!tools.some(tool => tool.name === 'novel_seed_min_design'), 'production install must not expose the test-only seed')
     const skills = (await ctx.skills.list({ cwd: config.workspace, scope: agent })).filter(skill => skill.provider === 'webnovel-bundled')
-    assert.equal(skills.length, config.installed ? 11 : 0)
+    assert.equal(skills.length, config.installed ? 12 : 0)
     report.tools = tools.length
     report.skills = []
     if (config.installed) {

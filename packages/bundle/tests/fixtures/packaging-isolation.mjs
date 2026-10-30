@@ -49,7 +49,7 @@ try {
     setup: async scope => { await scope.get('agentPresets').mount(scope, 'scriptor') },
   })
   const skills = await ctx.skills.list({ cwd: process.cwd(), scope: writing.agent })
-  assert.equal(skills.length, 11)
+  assert.equal(skills.length, 12)
   for (const skill of skills) {
     const loaded = await ctx.skills.get(skill.name, { cwd: process.cwd(), scope: writing.agent })
     assert.equal(loaded.provider, 'webnovel-bundled')
@@ -60,7 +60,7 @@ try {
     for (const service of ['embeddings', 'sceneSegmentation', 'reranking']) assert.ok(ctx.get(service), `Full package must load ${service}`)
   }
   fs.writeFileSync(reportPath, JSON.stringify({ ok: true, sourceReadDenied: true, trustedNativeAddons: true, actualLoader: true, skills: skills.length, embeddingLoaded: checkEmbedding && !!ctx.get('embeddings') }, null, 2) + '\n')
-  console.log('Source-blocked installed Host Loader: 11 skills passed')
+  console.log('Source-blocked installed Host Loader: 12 skills passed')
   await writing.dispose()
   assert.equal((await ctx.skills.list({ cwd: process.cwd() })).length, 0)
 } finally { await ctx.fiber.dispose() }
