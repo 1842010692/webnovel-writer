@@ -55,11 +55,21 @@
     "format": 0
   },
   "docs/user/upgrade-backup.md": {
-    "ratio": 0.967,
+    "ratio": 0.977,
     "strong": 0,
     "format": 0
   },
   "docs/user/workflows.md": {
+    "ratio": 1,
+    "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-analyze/SKILL.md": {
+    "ratio": 0.917,
+    "strong": 0,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-analyze/工序/事实提取.md": {
     "ratio": 1,
     "strong": 2,
     "format": 0
@@ -74,14 +84,44 @@
     "strong": 0,
     "format": 0
   },
-  "packages/bundle/skills/novel-analyze/工序/事实提取.md": {
+  "packages/bundle/skills/novel-craft/SKILL.md": {
     "ratio": 1,
-    "strong": 2,
+    "strong": 1,
     "format": 0
   },
-  "packages/bundle/skills/novel-analyze/SKILL.md": {
-    "ratio": 0.917,
-    "strong": 0,
+  "packages/bundle/skills/novel-craft/教材/01-题材与书名.md": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-craft/教材/02-人设蓝图.md": {
+    "ratio": 0.949,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-craft/教材/03-大纲结构.md": {
+    "ratio": 0.971,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-craft/教材/04-黄金三章与开篇.md": {
+    "ratio": 0.915,
+    "strong": 4,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-craft/教材/05-冲突悬念与断章.md": {
+    "ratio": 0.919,
+    "strong": 3,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-craft/教材/06-对白台词.md": {
+    "ratio": 0.97,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-craft/教材/07-修订与码字.md": {
+    "ratio": 0.899,
+    "strong": 4,
     "format": 0
   },
   "packages/bundle/skills/novel-design/SKILL.md": {
@@ -90,12 +130,12 @@
     "format": 0
   },
   "packages/bundle/skills/novel-director/SKILL.md": {
-    "ratio": 0.932,
+    "ratio": 0.935,
     "strong": 24,
-    "format": 9
+    "format": 5
   },
   "packages/bundle/skills/novel-drafting/SKILL.md": {
-    "ratio": 0.983,
+    "ratio": 0.984,
     "strong": 14,
     "format": 0
   },
@@ -111,42 +151,42 @@
   },
   "packages/bundle/skills/novel-outline/SKILL.md": {
     "ratio": 1,
-    "strong": 7,
+    "strong": 9,
     "format": 0
   },
+  "packages/bundle/skills/novel-polish/SKILL.md": {
+    "ratio": 0.918,
+    "strong": 5,
+    "format": 1
+  },
   "packages/bundle/skills/novel-polish/工序/1-表达清理.md": {
-    "ratio": 0.982,
-    "strong": 3,
-    "format": 14
+    "ratio": 0.987,
+    "strong": 6,
+    "format": 3
   },
   "packages/bundle/skills/novel-polish/工序/2-节奏与重塑.md": {
-    "ratio": 0.923,
-    "strong": 1,
-    "format": 24
+    "ratio": 1,
+    "strong": 3,
+    "format": 1
   },
   "packages/bundle/skills/novel-polish/工序/3-平台格式.md": {
     "ratio": 1,
     "strong": 1,
     "format": 0
   },
-  "packages/bundle/skills/novel-polish/SKILL.md": {
-    "ratio": 0.887,
-    "strong": 4,
-    "format": 1
-  },
-  "packages/bundle/skills/novel-review/底本/读者承诺审读.md": {
-    "ratio": 0.966,
-    "strong": 6,
+  "packages/bundle/skills/novel-review/SKILL.md": {
+    "ratio": 0.985,
+    "strong": 17,
     "format": 0
   },
-  "packages/bundle/skills/novel-review/底本/节奏与张力审读.md": {
-    "ratio": 0.984,
-    "strong": 5,
-    "format": 0
-  },
-  "packages/bundle/skills/novel-review/底本/情节与因果审读.md": {
+  "packages/bundle/skills/novel-review/底本/人物与关系审读.md": {
     "ratio": 0.983,
-    "strong": 6,
+    "strong": 8,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/信息披露审读.md": {
+    "ratio": 1,
+    "strong": 8,
     "format": 0
   },
   "packages/bundle/skills/novel-review/底本/全量审读.md": {
@@ -154,9 +194,9 @@
     "strong": 8,
     "format": 0
   },
-  "packages/bundle/skills/novel-review/底本/人物与关系审读.md": {
+  "packages/bundle/skills/novel-review/底本/情节与因果审读.md": {
     "ratio": 0.983,
-    "strong": 8,
+    "strong": 6,
     "format": 0
   },
   "packages/bundle/skills/novel-review/底本/文风与表达审读.md": {
@@ -169,9 +209,14 @@
     "strong": 6,
     "format": 0
   },
-  "packages/bundle/skills/novel-review/底本/信息披露审读.md": {
-    "ratio": 1,
-    "strong": 8,
+  "packages/bundle/skills/novel-review/底本/节奏与张力审读.md": {
+    "ratio": 0.984,
+    "strong": 5,
+    "format": 0
+  },
+  "packages/bundle/skills/novel-review/底本/读者承诺审读.md": {
+    "ratio": 0.966,
+    "strong": 6,
     "format": 0
   },
   "packages/bundle/skills/novel-review/底本/章节结构审读.md": {
@@ -179,9 +224,9 @@
     "strong": 6,
     "format": 0
   },
-  "packages/bundle/skills/novel-review/SKILL.md": {
-    "ratio": 0.984,
-    "strong": 16,
+  "packages/bundle/skills/novel-revision/SKILL.md": {
+    "ratio": 1,
+    "strong": 12,
     "format": 0
   },
   "packages/bundle/skills/novel-revision/底本/改稿章程.md": {
@@ -189,7 +234,7 @@
     "strong": 3,
     "format": 0
   },
-  "packages/bundle/skills/novel-revision/SKILL.md": {
+  "packages/bundle/skills/novel-settle/SKILL.md": {
     "ratio": 1,
     "strong": 11,
     "format": 0
@@ -197,11 +242,6 @@
   "packages/bundle/skills/novel-settle/底本/沉淀对账.md": {
     "ratio": 1,
     "strong": 2,
-    "format": 0
-  },
-  "packages/bundle/skills/novel-settle/SKILL.md": {
-    "ratio": 1,
-    "strong": 10,
     "format": 0
   },
   "packages/bundle/src/approval-snapshot.ts": {
@@ -246,7 +286,7 @@
   },
   "packages/bundle/src/novel-tools.ts": {
     "ratio": 0.982,
-    "strong": 30,
+    "strong": 31,
     "format": 3
   },
   "packages/bundle/src/paths.ts": {
@@ -256,12 +296,12 @@
   },
   "packages/bundle/src/persona.ts": {
     "ratio": 1,
-    "strong": 3,
+    "strong": 4,
     "format": 0
   },
   "packages/bundle/src/persona.ts#prompt": {
     "ratio": 1,
-    "strong": 3,
+    "strong": 4,
     "format": 0
   },
   "packages/bundle/src/reference/host.ts": {
@@ -314,26 +354,6 @@
     "strong": 0,
     "format": 0
   },
-  "packages/bundle/src/worker-policy.ts": {
-    "ratio": 1,
-    "strong": 1,
-    "format": 0
-  },
-  "packages/bundle/src/writing-delegation.ts": {
-    "ratio": 1,
-    "strong": 1,
-    "format": 0
-  },
-  "packages/bundle/src/worker-policy.ts#prompt": {
-    "ratio": 1,
-    "strong": 1,
-    "format": 0
-  },
-  "packages/bundle/src/writing-delegation.ts#prompt": {
-    "ratio": 1,
-    "strong": 1,
-    "format": 0
-  },
   "packages/bundle/src/status-context.ts#prompt": {
     "ratio": 1,
     "strong": 0,
@@ -379,9 +399,29 @@
     "strong": 0,
     "format": 0
   },
+  "packages/bundle/src/worker-policy.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/worker-policy.ts#prompt": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
   "packages/bundle/src/workspace.ts": {
     "ratio": 1,
     "strong": 2,
+    "format": 0
+  },
+  "packages/bundle/src/writing-delegation.ts": {
+    "ratio": 1,
+    "strong": 1,
+    "format": 0
+  },
+  "packages/bundle/src/writing-delegation.ts#prompt": {
+    "ratio": 1,
+    "strong": 1,
     "format": 0
   },
   "packages/core/src/arbitration/ask.ts": {
@@ -402,11 +442,11 @@
   "packages/core/src/assembly/assemble.ts": {
     "ratio": 1,
     "strong": 0,
-    "format": 5
+    "format": 4
   },
   "packages/core/src/assembly/read.ts": {
     "ratio": 1,
-    "strong": 1,
+    "strong": 2,
     "format": 0
   },
   "packages/core/src/assembly/sections.ts": {
